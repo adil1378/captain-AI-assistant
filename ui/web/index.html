@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Captain AI OS — J.A.R.V.I.S. Sci-Fi HUD</title>
+    <link rel="stylesheet" href="style.css?v=3.0.0">
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/js/all.min.js"></script>
+</head>
+<body>
+    <!-- Deep Space Pitch Black Canvas Background -->
+    <div class="hud-background" aria-hidden="true"></div>
+
+    <!-- Top Sci-Fi Status & Drawer Toggle Bar -->
+    <header class="hud-top-bar region-navigation zone-navigation" role="banner">
+        <button class="hud-icon-btn" id="toggle-left-drawer-btn" title="Toggle Explorer & Modes Sidebar">
+            <i class="fa-solid fa-bars-staggered"></i>
+            <span>MODES</span>
+        </button>
+
+        <div class="hud-brand">
+            <i class="fa-solid fa-atom text-glow-cyan"></i>
+            <span>CAPTAIN <strong>J.A.R.V.I.S. OS</strong></span>
+            <span class="hud-status-tag" id="hud-status-tag">SYSTEM READY</span>
+        </div>
+
+        <button class="hud-icon-btn" id="toggle-right-drawer-btn" title="Toggle Conversation Stream & Swarm">
+            <i class="fa-solid fa-comments"></i>
+            <span>STREAM</span>
+        </button>
+    </header>
+
+    <!-- Main Viewport — Central J.A.R.V.I.S. Core HUD (70% - 75% Screen Area) -->
+    <main class="hud-main-stage region-captain-core region-workspace zone-central-presence zone-workspace zone-memory zone-intelligence" role="main" aria-label="J.A.R.V.I.S. Central Core HUD Stage" aria-live="polite">
+        
+        <!-- J.A.R.V.I.S. Arc Reactor Core Complex (70-75% Dominant Display) -->
+        <div class="jarvis-core-container orb-wrapper state-idle state-default" id="jarvis-core-container" role="button" tabindex="0" title="Click or Press Spacebar for Voice Input">
+            
+            <div class="captain-layer layer-4-ambient-field"></div>
+            <div class="captain-layer layer-3-orbital-structure"></div>
+            <canvas class="captain-layer layer-5-communication"></canvas>
+            <div class="captain-layer layer-6-intelligence"></div>
+            <div class="captain-layer layer-7-interaction"></div>
+            <div class="captain-layer layer-8-environmental"></div>
+
+            <!-- SVG Concentric Orbital HUD Rings -->
+            <svg class="jarvis-hud-svg" viewBox="0 0 500 500" aria-hidden="true">
+                <!-- Outer Radial Degrees Ring -->
+                <circle cx="250" cy="250" r="235" class="hud-ring ring-outer-border" />
+                <circle cx="250" cy="250" r="220" class="hud-ring ring-dashed-outer" />
+                
+                <!-- Rotating Segment Arcs -->
+                <path d="M 250,30 A 220,220 0 0,1 470,250" class="hud-arc arc-cyan-1" />
+                <path d="M 250,470 A 220,220 0 0,1 30,250" class="hud-arc arc-purple-1" />
+
+                <!-- Radial Degree Markers -->
+                <text x="250" y="20" class="hud-deg-text">0°</text>
+                <text x="480" y="255" class="hud-deg-text">90°</text>
+                <text x="250" y="492" class="hud-deg-text">180°</text>
+                <text x="5" y="255" class="hud-deg-text">270°</text>
+
+                <!-- Mid Concentric Target Reticle Rings -->
+                <circle cx="250" cy="250" r="170" class="hud-ring ring-mid-reticle" />
+                <circle cx="250" cy="250" r="140" class="hud-ring ring-dashed-inner" />
+
+                <!-- Crosshairs -->
+                <line x1="250" y1="50" x2="250" y2="100" class="hud-crosshair" />
+                <line x1="250" y1="400" x2="250" y2="450" class="hud-crosshair" />
+                <line x1="50" y1="250" x2="100" y2="250" class="hud-crosshair" />
+                <line x1="400" y1="250" x2="450" y2="250" class="hud-crosshair" />
+            </svg>
+
+            <!-- HTML5 Waveform Canvas Visualizer (Audio Reactive) -->
+            <canvas id="jarvis-canvas" class="jarvis-canvas-layer" width="500" height="500"></canvas>
+
+            <!-- Central Neural Energy Core Orb (Layers 1 & 2) -->
+            <div class="jarvis-neural-core core-orb" id="jarvis-neural-core">
+                <div class="core-energy-shell layer-2-energy-shell" id="core-energy-shell"></div>
+                <div class="captain-layer layer-1-neural-core">
+                    <div class="core-inner-icon">
+                        <i class="fa-solid fa-microphone-slash" id="jarvis-icon"></i>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Dynamic Spoken Transcript Banner -->
+        <div class="hud-spoken-banner" id="hud-spoken-banner" aria-live="polite">
+            <span class="banner-label">J.A.R.V.I.S. VOICE SYSTEM:</span>
+            <span class="banner-text" id="spoken-transcript">Click core or press Spacebar for direct voice conversation...</span>
+        </div>
+
+    </main>
+
+    <!-- Bottom Floating Voice & Text Conversation HUD Bar -->
+    <footer class="hud-bottom-bar region-utility zone-utility" role="region" aria-label="Conversation Control Bar">
+        <div class="hud-input-box">
+            <button class="hud-action-btn mic-btn" id="voice-trigger-btn" title="Toggle Voice Conversation (Spacebar)">
+                <i class="fa-solid fa-microphone"></i>
+            </button>
+            <input type="text" id="hud-text-input" placeholder="Speak or type your command to Captain J.A.R.V.I.S..." autocomplete="off">
+            <button class="hud-action-btn send-btn" id="send-command-btn" title="Send Prompt">
+                <i class="fa-solid fa-paper-plane"></i>
+            </button>
+        </div>
+    </footer>
+
+    <!-- Collapsible Left Drawer (Explorer & Workspace Modes - Hidden by Default) -->
+    <aside class="hud-drawer drawer-left" id="left-drawer" aria-hidden="true">
+        <div class="drawer-header">
+            <span><i class="fa-solid fa-cubes text-cyan"></i> WORKSPACE MODES</span>
+            <button class="drawer-close-btn" id="close-left-drawer-btn"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="drawer-body">
+            <div class="mode-item active" data-mode="CONVERSATION"><i class="fa-solid fa-comments"></i> Direct Conversation</div>
+            <div class="mode-item" data-mode="CODING"><i class="fa-solid fa-code"></i> Coding Agent</div>
+            <div class="mode-item" data-mode="RESEARCH"><i class="fa-solid fa-flask"></i> Research Agent</div>
+            <div class="mode-item" data-mode="KNOWLEDGE"><i class="fa-solid fa-diagram-project"></i> Knowledge Memory</div>
+            <div class="mode-item" data-mode="SYSTEM"><i class="fa-solid fa-microchip"></i> System Metrics</div>
+        </div>
+    </aside>
+
+    <!-- Collapsible Right Drawer (Chat Conversation Stream & Agent Swarm - Hidden by Default) -->
+    <aside class="hud-drawer drawer-right" id="right-drawer" aria-hidden="true">
+        <div class="drawer-header">
+            <span><i class="fa-solid fa-comment-dots text-cyan"></i> CONVERSATION STREAM</span>
+            <button class="drawer-close-btn" id="close-right-drawer-btn"><i class="fa-solid fa-xmark"></i></button>
+        </div>
+        <div class="drawer-body">
+            <div class="hud-stream-log" id="hud-stream-log" role="log">
+                <div class="hud-msg system-msg">
+                    <span class="msg-sender">J.A.R.V.I.S. CORE</span>
+                    <span class="msg-bubble">All systems online. Direct voice & text conversation ready.</span>
+                </div>
+            </div>
+        </div>
+    </aside>
+
+    <script src="app.js?v=3.0.0"></script>
+</body>
+</html>

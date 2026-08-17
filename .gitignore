@@ -1,0 +1,17 @@
+.env
+.env.*
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+data/
+*.db
+*.sqlite
+*.sqlite3
+logs/
+.venv/
+venv/
+*password*
+PyWhatKit_DB.txt
+scratch_*.py
