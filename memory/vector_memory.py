@@ -68,18 +68,28 @@ def store_semantic_memory(memory_id: str, text: str, metadata: Optional[Dict[str
         return False
 
 
-def query_semantic_memory(query: str, top_k: int = 3, filter_metadata: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+from src.backend.config import settings
+
+
+def query_semantic_memory(
+    query: str,
+    top_k: int = 3,
+    filter_metadata: Optional[Dict[str, Any]] = None,
+    distance_threshold: Optional[float] = None
+) -> List[Dict[str, Any]]:
     """
-    Search for semantically relevant memories matching the query.
+    Search for semantically relevant memories matching the query, enforcing distance thresholding.
 
     Args:
         query: Search string query.
         top_k: Number of top matches to return.
         filter_metadata: Optional metadata filter dict.
+        distance_threshold: Maximum allowed vector distance (defaults to settings.VECTOR_MEMORY_DISTANCE_THRESHOLD).
 
     Returns:
         List of dicts containing 'id', 'document', 'metadata', 'distance'.
     """
+    threshold = distance_threshold if distance_threshold is not None else getattr(settings, "VECTOR_MEMORY_DISTANCE_THRESHOLD", 0.80)
     try:
         collection = _get_collection()
         count = collection.count()
@@ -103,18 +113,35 @@ def query_semantic_memory(query: str, top_k: int = 3, filter_metadata: Optional[
             distances = results["distances"][0] if results.get("distances") else [0.0] * len(docs)
 
             for i in range(len(docs)):
-                formatted.append({
-                    "id": ids[i],
-                    "document": docs[i],
-                    "metadata": metas[i],
-                    "distance": distances[i]
-                })
+                dist = float(distances[i])
+                logger.info(f"VectorMemory: Query '{query}' item '{ids[i]}' distance={dist:.4f} (threshold={threshold:.2f})")
+                if dist <= threshold:
+                    formatted.append({
+                        "id": ids[i],
+                        "document": docs[i],
+                        "metadata": metas[i],
+                        "distance": dist
+                    })
+                else:
+                    logger.info(f"VectorMemory: Discarded item '{ids[i]}' with distance {dist:.4f} > {threshold:.2f}")
 
-        logger.debug(f"VectorMemory: Query '{query}' returned {len(formatted)} semantic matches.")
+        logger.debug(f"VectorMemory: Query '{query}' returned {len(formatted)} relevant semantic matches.")
         return formatted
     except Exception as e:
         logger.error(f"VectorMemory query error for '{query}': {e}")
         return []
+
+
+def clear_session_semantic_memory(session_id: str) -> bool:
+    """Clear memories associated with a specific session without deleting global ChromaDB knowledge."""
+    try:
+        collection = _get_collection()
+        collection.delete(where={"session_id": session_id})
+        logger.info(f"VectorMemory: Cleared session-scoped semantic memory for '{session_id}'.")
+        return True
+    except Exception as e:
+        logger.warning(f"VectorMemory session clear warning for '{session_id}': {e}")
+        return False
 
 
 def clear_semantic_memory() -> bool:

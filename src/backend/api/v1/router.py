@@ -138,11 +138,17 @@ async def get_history_endpoint(thread_id: str = "captain_api_session", limit: in
         raise HTTPException(status_code=500, detail=str(e))
 
 
+from memory.vector_memory import store_semantic_memory, clear_session_semantic_memory
+from src.graph.state_graph import reset_thread_checkpoint
+
+
 @api_v1_router.post("/clear-history")
 async def clear_history_endpoint(req: ClearHistoryRequest):
-    """Clear conversation history for a given session."""
+    """Clear conversation history for a given session, invalidating DB turns, vector memories, and checkpointer state."""
     try:
         deleted = clear_session(session_id=req.thread_id)
+        clear_session_semantic_memory(session_id=req.thread_id)
+        reset_thread_checkpoint(thread_id=req.thread_id)
         return {"status": "success", "session_id": req.thread_id, "deleted_turns": deleted}
     except Exception as e:
         logger.error(f"Clear history API error: {e}")

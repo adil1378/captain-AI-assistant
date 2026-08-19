@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     SUPABASE_URL: Optional[str] = None
     SUPABASE_KEY: Optional[str] = None
     DATABASE_URL: str = "postgresql+asyncpg://postgres:postgres@localhost:5432/captain_ai"
+    VECTOR_MEMORY_DISTANCE_THRESHOLD: float = 0.80
 
     # Comms & Automation Settings
     SMTP_SERVER: str = "smtp.gmail.com"

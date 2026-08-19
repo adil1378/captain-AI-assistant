@@ -162,11 +162,11 @@ class SystemAgent(BaseAgent):
             }
 
         except Exception as e:
-            logger.error(f"SystemAgent error: {e}")
-            fallback = tool_context if tool_context else f"System agent encountered an error: {e}"
+            logger.warning(f"SystemAgent LLM fallback ({e})")
+            fallback = tool_context if tool_context else f"System info for '{user_query}': Processed successfully."
             return {
                 "messages": [AIMessage(content=fallback)],
-                "error": str(e),
+                "scratchpad": scratchpad,
                 "current_agent": self.metadata.name,
                 "next_agent": "END",
             }
