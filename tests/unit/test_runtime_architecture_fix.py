@@ -11,8 +11,8 @@ Tests:
 import pytest
 import asyncio
 from langchain_core.messages import HumanMessage, AIMessage
-from src.graph.state_graph import classify_intent_hybrid, router_node, reset_thread_checkpoint
-from memory.session_memory import save_turn, get_history, clear_session
+from src.graph.state_graph import classify_intent_hybrid, router_node
+from memory.session_memory import save_turn, get_history, clear_session, advance_session_thread_version
 from memory.vector_memory import store_semantic_memory, query_semantic_memory, clear_session_semantic_memory
 from src.tools.tool_invocation_layer import ToolInvocationLayer, ToolExecutionStatus
 from src.tools.tool_registry import ToolRegistry, ToolDefinition, ToolMetadata
@@ -74,10 +74,11 @@ def test_session_clear_isolation():
     history_before = get_history(test_session)
     assert len(history_before) == 2
 
-    # Clear session & reset checkpointer
+    # Clear session & advance versioned checkpointer thread
     deleted = clear_session(test_session)
-    reset_thread_checkpoint(test_session)
+    new_thread = advance_session_thread_version(test_session)
     assert deleted >= 2
+    assert "_v2" in new_thread
 
     history_after = get_history(test_session)
     assert len(history_after) == 0

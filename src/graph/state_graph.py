@@ -99,19 +99,6 @@ async def router_node(state: AgentState) -> Dict[str, Any]:
     return res
 
 
-def reset_thread_checkpoint(thread_id: str) -> bool:
-    """Clear memory checkpoint state for a specific thread_id in LangGraph."""
-    global _checkpointer_instance
-    try:
-        if _checkpointer_instance and hasattr(_checkpointer_instance, "storage"):
-            _checkpointer_instance.storage.pop(thread_id, None)
-        logger.info(f"LangGraph Checkpointer: Cleared checkpoint state for thread_id '{thread_id}'.")
-        return True
-    except Exception as e:
-        logger.warning(f"LangGraph Checkpointer clear warning for thread_id '{thread_id}': {e}")
-        return False
-
-
 def create_captain_graph(registry: AgentRegistry, manager: AgentLifecycleManager, checkpointer: Any = None):
     """
     Builds the production V2 LangGraph StateGraph engine.

@@ -176,7 +176,6 @@ async def get_history_endpoint(thread_id: str, limit: int = 50):
 
 
 from memory.vector_memory import store_semantic_memory, clear_session_semantic_memory
-from src.graph.state_graph import reset_thread_checkpoint
 
 
 @api_v1_router.post("/clear-history")
@@ -188,7 +187,6 @@ async def clear_history_endpoint(req: ClearHistoryRequest):
         session_id = req.thread_id.strip()
         deleted = clear_session(session_id=session_id)
         clear_session_semantic_memory(session_id=session_id)
-        reset_thread_checkpoint(thread_id=session_id)
         new_canonical_thread = advance_session_thread_version(session_id=session_id)
         logger.info(f"ClearHistory: Session '{session_id}' cleared ({deleted} turns removed). Advanced checkpointer thread to '{new_canonical_thread}'.")
         return {"status": "success", "session_id": session_id, "new_thread_id": new_canonical_thread, "deleted_turns": deleted}

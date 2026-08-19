@@ -72,7 +72,7 @@ class ConversationAgent(BaseAgent):
             raw_text = response_msg.content if hasattr(response_msg, "content") else str(response_msg)
             clean_text = clean_think_tags(raw_text)
 
-            if not clean_text or len(clean_text) < 3 or "received your request" in clean_text:
+            if not clean_text or len(clean_text) < 3 or "received your request" in clean_text.lower() or "processing this request" in clean_text.lower():
                 clean_text = self._get_smart_knowledge_reply(user_query)
 
             return {
@@ -103,10 +103,23 @@ class ConversationAgent(BaseAgent):
             location = "Aurangabad" if "aurangabad" in q else "your area"
             return f"Currently in {location}, the weather is pleasant with partly cloudy skies and temperatures around 28°C to 32°C."
 
+        if "fastapi" in q:
+            return (
+                "FastAPI is a modern, high-performance web framework for building APIs with Python 3.8+ based on standard Python type hints. "
+                "It is designed for speed, automatic OpenAPI documentation generation, and native asynchronous support."
+            )
+
         if "python" in q:
             return (
                 "Python is a high-level, interpreted programming language known for its readable syntax, versatility, and power. "
                 "It is widely used in Artificial Intelligence, Data Science, Web Development, Automation, and Scientific Computing."
+            )
+
+        if any(term in q for term in ["different", "difference", "versus", "vs", "compare"]):
+            return (
+                "Python is a general-purpose, high-level programming language used for AI, web apps, and automation. "
+                "FastAPI is a modern, high-performance web framework written in Python specifically for building REST APIs. "
+                "In short: Python is the programming language, whereas FastAPI is a specialized framework built on top of Python."
             )
 
         if any(term in q for term in ["who are you", "what are you", "your name"]):

@@ -64,26 +64,26 @@ def test_e2e_weather_vs_api_routing():
 # --- 3. E2E MULTI-TURN CONVERSATION SEMANTIC VALIDATION TEST ---
 
 def test_e2e_multi_turn_dialogue():
-    """Verify multi-turn conversation maintains context across turns without repeating Q1 text."""
+    """Verify multi-turn conversation maintains context across turns with explicit semantic verification."""
     session_id = "test_e2e_multi_turn_session_99"
 
-    # Turn 1: Python
+    # Turn 1: Python semantics
     res1 = client.post("/api/v1/chat", json={"query": "What is Python?", "thread_id": session_id})
     assert res1.status_code == 200
     reply1 = res1.json()["reply"]
-    assert len(reply1) > 10
+    assert any(kw in reply1.lower() for kw in ["python", "language", "programming", "code"])
 
-    # Turn 2: FastAPI
+    # Turn 2: FastAPI semantics
     res2 = client.post("/api/v1/chat", json={"query": "What is FastAPI?", "thread_id": session_id})
     assert res2.status_code == 200
     reply2 = res2.json()["reply"]
-    assert len(reply2) > 10
+    assert any(kw in reply2.lower() for kw in ["fastapi", "framework", "web", "api", "python"])
 
-    # Turn 3: Difference/Comparison
+    # Turn 3: Difference/Comparison semantics
     res3 = client.post("/api/v1/chat", json={"query": "How are they different?", "thread_id": session_id})
     assert res3.status_code == 200
     reply3 = res3.json()["reply"]
-    assert len(reply3) > 10
+    assert any(kw in reply3.lower() for kw in ["python", "fastapi", "different", "framework", "language", "comparison"])
 
     clear_session(session_id)
 
@@ -94,16 +94,20 @@ def test_e2e_clear_history_invalidation():
     """Verify /clear-history clears DB turns and advances thread version so cleared state is not exposed."""
     session_id = "test_e2e_clear_session_77"
 
-    # Step 1: Tell secret
+    # Step 1: Tell secret under v1
     res1 = client.post("/api/v1/chat", json={"query": "My secret code is Emerald-Omega-99.", "thread_id": session_id})
     assert res1.status_code == 200
 
-    # Step 2: Clear history
+    # Step 2: Clear history & verify thread version advances to v2
     res_clear = client.post("/api/v1/clear-history", json={"thread_id": session_id})
     assert res_clear.status_code == 200
     clear_data = res_clear.json()
     assert clear_data["status"] == "success"
-    assert "_v2" in clear_data["new_thread_id"]
+    assert clear_data["new_thread_id"].endswith("_v2")
+
+    # Assert canonical thread resolution resolves v2 (v1 is completely abandoned)
+    canonical_after = get_canonical_thread_id(session_id)
+    assert canonical_after == f"{session_id}_v2"
 
     # Step 3: Ask secret after clear -> Must NOT reveal Emerald-Omega-99
     res2 = client.post("/api/v1/chat", json={"query": "What is my secret code?", "thread_id": session_id})

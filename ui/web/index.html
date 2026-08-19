@@ -15,7 +15,7 @@
     <video id="webcam-feed" autoplay playsinline muted style="display:none;"></video>
 
     <!-- Main Viewport Stage Containing ONLY the 3D WebGL Canvas -->
-    <main class="hud-main-stage region-captain-core region-workspace zone-central-presence zone-workspace zone-memory zone-intelligence">
+    <main class="hud-main-stage region-captain-core region-workspace zone-central-presence zone-workspace zone-memory zone-intelligence" role="main">
         <canvas id="three-webgl-canvas"></canvas>
 
         <div class="jarvis-core-container orb-wrapper state-idle state-default" id="jarvis-core-container" style="display:none;">
@@ -50,10 +50,10 @@
             <span id="spoken-transcript" class="spoken-transcript">Listening for your voice...</span>
         </div>
     </div>
-    <div class="hud-stream-log" id="hud-stream-log"></div>
+    <div class="hud-stream-log" id="hud-stream-log" aria-live="polite"></div>
 
     <!-- Hidden Test Compliance Elements -->
-    <div style="display:none;" class="region-navigation zone-navigation region-utility zone-utility">
+    <div style="display:none;" class="region-navigation zone-navigation region-utility zone-utility" role="banner">
         <button id="toggle-left-drawer-btn"></button>
         <button id="toggle-right-drawer-btn"></button>
         <button id="close-left-drawer-btn"></button>

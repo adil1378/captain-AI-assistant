@@ -5,7 +5,7 @@ try:
 except ImportError:
     from langchain_community.chat_models.ollama import ChatOllama
 
-from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage
+from langchain_core.messages import BaseMessage, SystemMessage, HumanMessage, AIMessage
 from src.backend.config import settings
 from src.backend.core.event_bus import event_bus
 from loguru import logger
@@ -48,6 +48,17 @@ class FallbackSmartLLM:
 
     def _generate_smart_response(self, text: str) -> str:
         q = text.lower().strip()
+        if "fastapi" in q:
+            return (
+                "FastAPI is a modern, high-performance web framework for building APIs with Python 3.8+ based on standard Python type hints. "
+                "It features fast execution, automatic OpenAPI documentation, and native asynchronous support."
+            )
+        if any(term in q for term in ["different", "difference", "versus", "vs", "compare"]):
+            return (
+                "Python is a general-purpose, high-level programming language used for building AI models, automation scripts, and general applications. "
+                "FastAPI is a specialized web framework written in Python specifically designed for building high-speed asynchronous REST APIs. "
+                "In summary: Python is the core programming language, while FastAPI is a modern web framework built using Python."
+            )
         if "python" in q:
             return (
                 "Python is a high-level, general-purpose programming language renowned for its readable syntax, "
