@@ -32,7 +32,7 @@ def test_router_word_boundary_false_positives():
 
 def test_router_intent_classification():
     """Verify intent router correctly routes queries based on intent rather than raw substring position."""
-    assert classify_intent_hybrid("weather API in Python") == "system_agent"
+    assert classify_intent_hybrid("weather API in Python") == "coder_agent"
     assert classify_intent_hybrid("What is the weather in Mumbai?") == "system_agent"
     assert classify_intent_hybrid("Write a Python function to calculate Fibonacci.") == "coder_agent"
     assert classify_intent_hybrid("Search the latest information about OpenAI.") == "search_agent"

@@ -101,20 +101,27 @@ class ClearHistoryRequest(BaseModel):
     thread_id: str
 
 
+from memory.session_memory import (
+    save_turn, get_history, clear_session,
+    get_canonical_thread_id, advance_session_thread_version
+)
+
+
 # --- REST Endpoints ---
 
 @api_v1_router.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(req: ChatRequest):
-    """Non-blocking async REST chat endpoint with UUID session isolation & structured telemetry."""
+    """Non-blocking async REST chat endpoint with versioned canonical thread isolation & structured telemetry."""
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
     start_time = time.time()
     request_id = f"req_{uuid4().hex[:8]}"
-    thread_id = req.thread_id.strip() if req.thread_id and req.thread_id.strip() else f"session_{uuid4().hex[:8]}"
+    raw_session_id = req.thread_id.strip() if req.thread_id and req.thread_id.strip() else f"session_{uuid4().hex[:8]}"
+    canonical_thread = get_canonical_thread_id(raw_session_id)
 
     graph = await _get_graph()
-    config = {"configurable": {"thread_id": thread_id}}
+    config = {"configurable": {"thread_id": canonical_thread}}
 
     try:
         final_state = await graph.ainvoke(_make_state(req.query), config=config)
@@ -123,25 +130,25 @@ async def chat_endpoint(req: ChatRequest):
         reply = messages[-1].content if messages else "I am processing your request."
         exec_time = time.time() - start_time
 
-        # Persist conversation turn
+        # Persist conversation turn under session_id
         turn_id = f"turn_{int(time.time() * 1000)}"
-        save_turn(thread_id, "user", req.query)
-        save_turn(thread_id, "assistant", reply)
+        save_turn(raw_session_id, "user", req.query)
+        save_turn(raw_session_id, "assistant", reply)
 
         # Offload ChromaDB vector store indexing
         asyncio.create_task(
-            asyncio.to_thread(_async_store_semantic_memory, turn_id, f"User asked: {req.query} | Captain responded: {reply}", {"session_id": thread_id})
+            asyncio.to_thread(_async_store_semantic_memory, turn_id, f"User asked: {req.query} | Captain responded: {reply}", {"session_id": raw_session_id})
         )
 
         # Structured Observability Logging
         logger.info(
-            f"REQUEST TELEMETRY | RequestID: {request_id} | Session: {thread_id} | "
-            f"Query: '{req.query}' | Agent: '{agent}' | Time: {exec_time:.3f}s | Status: SUCCESS"
+            f"REQUEST TELEMETRY | RequestID: {request_id} | Session: {raw_session_id} | "
+            f"CanonicalThread: {canonical_thread} | Query: '{req.query}' | Agent: '{agent}' | Time: {exec_time:.3f}s | Status: SUCCESS"
         )
 
         return ChatResponse(
             request_id=request_id,
-            thread_id=thread_id,
+            thread_id=raw_session_id,
             reply=reply,
             agent=agent,
             execution_time_seconds=round(exec_time, 3)
@@ -149,8 +156,8 @@ async def chat_endpoint(req: ChatRequest):
     except Exception as e:
         exec_time = time.time() - start_time
         logger.error(
-            f"REQUEST TELEMETRY ERROR | RequestID: {request_id} | Session: {thread_id} | "
-            f"Query: '{req.query}' | Error: {e} | Time: {exec_time:.3f}s"
+            f"REQUEST TELEMETRY ERROR | RequestID: {request_id} | Session: {raw_session_id} | "
+            f"CanonicalThread: {canonical_thread} | Query: '{req.query}' | Error: {e} | Time: {exec_time:.3f}s"
         )
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -174,15 +181,17 @@ from src.graph.state_graph import reset_thread_checkpoint
 
 @api_v1_router.post("/clear-history")
 async def clear_history_endpoint(req: ClearHistoryRequest):
-    """Clear conversation history for a given session, invalidating DB turns, vector memories, and checkpointer state."""
+    """Clear conversation history for a given session, invalidating DB turns, vector memories, and advancing checkpointer thread version."""
     if not req.thread_id.strip():
         raise HTTPException(status_code=400, detail="thread_id is required.")
     try:
-        deleted = clear_session(session_id=req.thread_id)
-        clear_session_semantic_memory(session_id=req.thread_id)
-        reset_thread_checkpoint(thread_id=req.thread_id)
-        logger.info(f"ClearHistory: Session '{req.thread_id}' cleared ({deleted} turns removed).")
-        return {"status": "success", "session_id": req.thread_id, "deleted_turns": deleted}
+        session_id = req.thread_id.strip()
+        deleted = clear_session(session_id=session_id)
+        clear_session_semantic_memory(session_id=session_id)
+        reset_thread_checkpoint(thread_id=session_id)
+        new_canonical_thread = advance_session_thread_version(session_id=session_id)
+        logger.info(f"ClearHistory: Session '{session_id}' cleared ({deleted} turns removed). Advanced checkpointer thread to '{new_canonical_thread}'.")
+        return {"status": "success", "session_id": session_id, "new_thread_id": new_canonical_thread, "deleted_turns": deleted}
     except Exception as e:
         logger.error(f"Clear history API error: {e}")
         raise HTTPException(status_code=500, detail=str(e))
@@ -217,7 +226,8 @@ async def websocket_chat_endpoint(websocket: WebSocket):
         while True:
             data = await websocket.receive_json()
             query = (data.get("query") or data.get("message") or "").strip()
-            thread_id = data.get("thread_id", "").strip() or f"ws_session_{uuid4().hex[:8]}"
+            raw_session_id = data.get("thread_id", "").strip() or f"ws_session_{uuid4().hex[:8]}"
+            canonical_thread = get_canonical_thread_id(raw_session_id)
 
             if not query:
                 logger.warning(f"WebSocket received empty query from payload: {data}")
@@ -225,9 +235,9 @@ async def websocket_chat_endpoint(websocket: WebSocket):
 
             start_time = time.time()
             request_id = f"ws_req_{uuid4().hex[:8]}"
-            await websocket.send_json({"event": "AgentStarted", "agent": "router", "request_id": request_id, "thread_id": thread_id})
+            await websocket.send_json({"event": "AgentStarted", "agent": "router", "request_id": request_id, "thread_id": raw_session_id})
 
-            config = {"configurable": {"thread_id": thread_id}}
+            config = {"configurable": {"thread_id": canonical_thread}}
             final_state = await graph.ainvoke(_make_state(query), config=config)
             messages = final_state.get("messages", [])
             reply = messages[-1].content if messages else "Done."
@@ -236,24 +246,24 @@ async def websocket_chat_endpoint(websocket: WebSocket):
 
             # Persist WebSocket conversation turn
             turn_id = f"turn_{int(time.time() * 1000)}"
-            save_turn(thread_id, "user", query)
-            save_turn(thread_id, "assistant", reply)
+            save_turn(raw_session_id, "user", query)
+            save_turn(raw_session_id, "assistant", reply)
 
             # Offload ChromaDB vector store indexing
             asyncio.create_task(
-                asyncio.to_thread(_async_store_semantic_memory, turn_id, f"User asked: {query} | Captain responded: {reply}", {"session_id": thread_id})
+                asyncio.to_thread(_async_store_semantic_memory, turn_id, f"User asked: {query} | Captain responded: {reply}", {"session_id": raw_session_id})
             )
 
             # Structured Telemetry
             logger.info(
-                f"WS TELEMETRY | RequestID: {request_id} | Session: {thread_id} | "
-                f"Query: '{query}' | Agent: '{agent}' | Time: {exec_time:.3f}s | Status: SUCCESS"
+                f"WS TELEMETRY | RequestID: {request_id} | Session: {raw_session_id} | "
+                f"CanonicalThread: {canonical_thread} | Query: '{query}' | Agent: '{agent}' | Time: {exec_time:.3f}s | Status: SUCCESS"
             )
 
             await websocket.send_json({
                 "event": "AgentFinished",
                 "request_id": request_id,
-                "thread_id": thread_id,
+                "thread_id": raw_session_id,
                 "agent": agent,
                 "reply": reply,
                 "execution_time_seconds": round(exec_time, 3)

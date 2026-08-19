@@ -190,3 +190,28 @@ def list_sessions() -> List[str]:
     s_conn = _get_sqlite_conn()
     cursor = s_conn.execute("SELECT DISTINCT session_id FROM conversation_turns ORDER BY session_id")
     return [row["session_id"] for row in cursor.fetchall()]
+
+
+# Session Thread Version Tracking Dictionary (thread-safe in-memory mapping)
+_session_versions: Dict[str, int] = {}
+_version_lock = threading.Lock()
+
+
+def get_canonical_thread_id(session_id: str) -> str:
+    """Retrieve the canonical versioned thread_id for a given session (e.g. 'session123_v1')."""
+    clean_id = session_id.strip() if session_id else "default"
+    with _version_lock:
+        ver = _session_versions.get(clean_id, 1)
+        return f"{clean_id}_v{ver}"
+
+
+def advance_session_thread_version(session_id: str) -> str:
+    """Increment session thread version (e.g., _v1 -> _v2), allocating a 100% clean checkpointer state."""
+    clean_id = session_id.strip() if session_id else "default"
+    with _version_lock:
+        current_ver = _session_versions.get(clean_id, 1)
+        new_ver = current_ver + 1
+        _session_versions[clean_id] = new_ver
+        new_thread_id = f"{clean_id}_v{new_ver}"
+        logger.info(f"SessionMemory: Advanced thread version for '{clean_id}' to '{new_thread_id}'")
+        return new_thread_id

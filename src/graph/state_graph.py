@@ -35,18 +35,26 @@ def classify_intent_hybrid(user_query: str) -> str:
     if not q:
         return "chat_agent"
 
-    # Rule 1: High-confidence Coding intent
-    coding_exact = ["def ", "class ", "import ", "syntax error", "refactor", "debug", "github", "git commit", "ci/cd", "pipeline", "fibonacci"]
-    if any(kw in q for kw in coding_exact) or (("write" in q or "build" in q or "create" in q) and ("code" in q or "function" in q or "script" in q or "python" in q)):
+    # Rule 1: High-confidence Technical / Coding intent (including weather API / coding queries)
+    coding_exact = ["def ", "class ", "import ", "syntax error", "refactor", "debug", "github", "git commit", "ci/cd", "pipeline", "fibonacci", "api in python", "weather api", "rest api"]
+    coding_combinations = (
+        ("write" in q or "build" in q or "create" in q or "how to" in q or "use" in q)
+        and ("code" in q or "function" in q or "script" in q or "python" in q or "api" in q or "endpoint" in q)
+    )
+    if any(kw in q for kw in coding_exact) or coding_combinations:
         return "coder_agent"
 
-    # Rule 2: High-confidence Weather & System intent
+    # Rule 2: High-confidence Live System Metrics & Live Weather Forecast Intent
+    # Requires weather words AND live location/time intent (e.g., "weather in mumbai", "today's forecast")
     weather_words = ["weather", "temperature", "forecast", "rain", "climate", "humid"]
-    system_phrases = ["system metrics", "memory usage", "cpu usage", "disk space", "os info", "battery status", "hardware metrics"]
-    if any(_has_word(q, w) for w in weather_words) or any(kw in q for kw in system_phrases):
-        return "system_agent"
+    live_weather_indicators = [" in ", " for ", " at ", " of ", "today", "now", "current", "live", "city", "forecast"]
+    
+    has_weather_word = any(_has_word(q, w) for w in weather_words)
+    has_live_indicator = any(ind in q for ind in live_weather_indicators)
 
-    if "weather api" in q:
+    system_phrases = ["system metrics", "memory usage", "cpu usage", "disk space", "os info", "battery status", "hardware metrics"]
+
+    if (has_weather_word and has_live_indicator) or any(kw in q for kw in system_phrases):
         return "system_agent"
 
     # Rule 3: High-confidence Document / RAG intent
