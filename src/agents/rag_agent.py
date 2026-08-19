@@ -45,7 +45,15 @@ class RagAgent(BaseAgent):
                     f"[Source {i}: {source}{page_str}]\n{chunk['content']}"
                 )
             context_text = "\n\n".join(context_parts)
-            logger.info(f"RagAgent: Retrieved {len(chunks)} context chunks for query '{user_query}'")
+            logger.info(f"RagAgent: Retrieved {len(chunks)} relevant context chunks for query '{user_query}'")
+        elif rag_result.get("status") == "no_relevant_docs":
+            logger.warning(f"RagAgent: No document context passed relevance threshold for query '{user_query}'")
+            return {
+                "messages": [AIMessage(content="I don't have enough information in the provided documents to answer your question.")],
+                "scratchpad": scratchpad,
+                "current_agent": self.metadata.name,
+                "next_agent": "END",
+            }
         else:
             error_msg = rag_result.get("error", "No indexed documents found.")
             logger.warning(f"RagAgent: RAG lookup failed — {error_msg}")
@@ -63,8 +71,10 @@ class RagAgent(BaseAgent):
         messages_to_send = [
             SystemMessage(content=system_prompt),
             SystemMessage(content=f"Document Context:\n\n{context_text}"),
-        ] + history
-        if not any(isinstance(m, HumanMessage) for m in history):
+        ]
+        # Ensure active query is present as tail HumanMessage
+        messages_to_send.extend(history)
+        if not history or not (isinstance(history[-1], HumanMessage) and history[-1].content == user_query):
             messages_to_send.append(HumanMessage(content=user_query))
 
         llm = model_manager.get_model(

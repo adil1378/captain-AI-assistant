@@ -58,33 +58,70 @@ class SystemAgent(BaseAgent):
                 return match.group(1).strip()
         return ""
 
+    def _is_conceptual_explanation(self, query_lower: str) -> bool:
+        """Check if query is asking for a conceptual explanation rather than live system action."""
+        live_action_triggers = [
+            "current", "live", "my computer", "this system", "this machine",
+            "show ", "run ", "execute ", "check ", "how much"
+        ]
+        # Specific location weather queries (e.g., "weather in mumbai", "weather of karachi") are live weather queries
+        is_weather_location = ("weather" in query_lower or "temperature" in query_lower) and any(w in query_lower for w in [" in ", " for ", " at ", " of "])
+        
+        if any(trigger in query_lower for trigger in live_action_triggers) or is_weather_location:
+            return False
+
+        conceptual_triggers = [
+            "what is", "explain", "definition of", "how does", "what does",
+            "difference between", "meaning of", "why is", "tell me about"
+        ]
+        return any(trigger in query_lower for trigger in conceptual_triggers)
+
     async def execute(self, state: AgentState) -> Dict[str, Any]:
+        from src.tools.global_tools import tool_invocation_layer, init_global_tools, ToolExecutionStatus
+
         user_query = state.get("user_query", "")
         history = state.get("messages", [])  # Full conversation history from LangGraph
         scratchpad = state.get("scratchpad", {})
-        query_lower = user_query.lower()
+        query_lower = user_query.lower().strip()
 
         tool_context = ""
 
-        # --- Branch 1: System Metrics ---
-        if any(k in query_lower for k in ["cpu", "ram", "memory", "disk", "battery", "metrics", "performance", "usage", "storage"]):
-            metrics = get_system_metrics()
-            if metrics.get("status") == "success":
+        # Initialize global tool registry & security boundary
+        await init_global_tools()
+
+        is_conceptual = self._is_conceptual_explanation(query_lower)
+
+        # --- Branch 1: System Metrics (Only if NOT conceptual explanation) ---
+        if not is_conceptual and any(k in query_lower for k in ["cpu", "ram", "memory", "disk", "battery", "metrics", "performance", "usage", "storage"]):
+            exec_res = await tool_invocation_layer.execute_tool(
+                "get_system_metrics",
+                {},
+                caller_agent_name=self.metadata.name
+            )
+            if exec_res.status == ToolExecutionStatus.SUCCESS and isinstance(exec_res.result, dict):
+                metrics = exec_res.result
                 tool_context = (
                     f"LIVE SYSTEM METRICS:\n"
-                    f"- CPU Usage: {metrics['cpu_percent']}%\n"
-                    f"- RAM: {metrics['memory_used_gb']} GB used / {metrics['memory_total_gb']} GB total ({metrics['memory_percent']}% used)\n"
-                    f"- Disk C:\\: {metrics['disk']['used_gb']} GB used / {metrics['disk']['total_gb']} GB total ({metrics['disk']['percent']}% full)\n"
-                    f"- Battery: {metrics['battery']['percent']}% "
-                    f"({'Plugged In' if metrics['battery']['power_plugged'] else 'On Battery'})"
+                    f"- CPU Usage: {metrics.get('cpu_percent', 0)}%\n"
+                    f"- RAM: {metrics.get('memory_used_gb', 0)} GB used / {metrics.get('memory_total_gb', 0)} GB total ({metrics.get('memory_percent', 0)}% used)\n"
+                    f"- Disk C:\\: {metrics.get('disk', {}).get('used_gb', 0)} GB used / {metrics.get('disk', {}).get('total_gb', 0)} GB total ({metrics.get('disk', {}).get('percent', 0)}% full)\n"
+                    f"- Battery: {metrics.get('battery', {}).get('percent', 100)}% "
+                    f"({'Plugged In' if metrics.get('battery', {}).get('power_plugged', True) else 'On Battery'})"
                 )
-                logger.info("SystemAgent: Fetched system metrics successfully.")
+                logger.info("SystemAgent: Fetched system metrics via ToolInvocationLayer successfully.")
+            elif exec_res.status == ToolExecutionStatus.PERMISSION_DENIED:
+                tool_context = f"Permission denied for system metrics: {exec_res.error}"
 
-        # --- Branch 2: Weather ---
-        elif any(k in query_lower for k in ["weather", "temperature", "forecast", "rain", "wind", "climate", "humid"]):
+        # --- Branch 2: Weather (Only if NOT conceptual explanation) ---
+        elif not is_conceptual and any(k in query_lower for k in ["weather", "temperature", "forecast", "rain", "wind", "climate", "humid"]):
             city = self._extract_city(user_query) or "Karachi"
-            weather = get_live_weather(city)
-            if weather.get("status") == "success":
+            exec_res = await tool_invocation_layer.execute_tool(
+                "get_live_weather",
+                {"city": city},
+                caller_agent_name=self.metadata.name
+            )
+            if exec_res.status == ToolExecutionStatus.SUCCESS and isinstance(exec_res.result, dict):
+                weather = exec_res.result
                 loc_name = weather.get("city") or weather.get("location") or city
                 temp_c = weather.get("temperature_celsius") or weather.get("temperature_c", 0.0)
                 condition = weather.get("condition", "Clear")
@@ -101,41 +138,46 @@ class SystemAgent(BaseAgent):
                     f"- Wind Speed: {wind_kph} km/h\n"
                     f"- Summary: {summary}"
                 )
-                logger.info(f"SystemAgent: Fetched live weather for {loc_name}.")
-            else:
-                tool_context = f"Weather fetch failed: {weather.get('error', 'Unknown error')}"
+                logger.info(f"SystemAgent: Fetched live weather for {loc_name} via ToolInvocationLayer.")
+            elif exec_res.status == ToolExecutionStatus.PERMISSION_DENIED:
+                tool_context = f"Permission denied for weather fetch: {exec_res.error}"
 
         # --- Branch 3: Terminal Command ---
         elif any(k in query_lower for k in ["run", "execute", "command", "terminal", "shell", "cmd", "ping", "dir", "ls"]):
             cmd = self._extract_command(user_query)
             if cmd:
-                result = run_terminal_command(cmd)
-                if result.get("status") == "success":
+                exec_res = await tool_invocation_layer.execute_tool(
+                    "run_terminal_command",
+                    {"command": cmd},
+                    caller_agent_name=self.metadata.name
+                )
+                if exec_res.status == ToolExecutionStatus.SUCCESS and isinstance(exec_res.result, dict):
+                    result = exec_res.result
                     tool_context = (
                         f"TERMINAL COMMAND OUTPUT:\n"
-                        f"$ {result['command']}\n"
-                        f"Return Code: {result['returncode']}\n"
-                        f"Output:\n{result['output']}"
+                        f"$ {result.get('command', cmd)}\n"
+                        f"Return Code: {result.get('returncode', 0)}\n"
+                        f"Output:\n{result.get('output', '')}"
                     )
-                else:
-                    tool_context = f"Command failed: {result.get('error')}"
-                logger.info(f"SystemAgent: Executed terminal command: {cmd}")
+                    logger.info(f"SystemAgent: Executed terminal command '{cmd}' via ToolInvocationLayer.")
+                elif exec_res.status == ToolExecutionStatus.PERMISSION_DENIED:
+                    tool_context = f"Permission denied for terminal command execution: {exec_res.error}"
 
         # --- Build prompt with tool context ---
         system_prompt = (
             "You are Captain System, an elite assistant specialized in computer hardware metrics, "
             "weather reporting, and system operations. Provide clean, informative, well-formatted responses. "
-            "When system data is provided, use it directly and accurately in your response."
+            "When answering conceptual questions (e.g. 'What is RAM?'), explain the concepts clearly without using live tool metrics. "
+            "When real-time system data is provided, use it directly and accurately."
         )
 
-        # SystemMessage + optional tool data + full conversation history
         messages_to_send = [SystemMessage(content=system_prompt)]
         if tool_context:
             messages_to_send.append(SystemMessage(content=f"Real-Time Tool Data:\n{tool_context}"))
-        # Append full history (includes current HumanMessage injected by main.py)
+        
+        # Ensure active query is present as tail HumanMessage
         messages_to_send.extend(history)
-        # Fallback: if history is empty, append user query manually
-        if not any(isinstance(m, HumanMessage) for m in history):
+        if not history or not (isinstance(history[-1], HumanMessage) and history[-1].content == user_query):
             messages_to_send.append(HumanMessage(content=user_query))
 
         llm = model_manager.get_model(model_name=settings.CHAT_MODEL, temperature=0.3, max_tokens=1024)

@@ -70,25 +70,36 @@ def ingest_document(file_path: str) -> Dict[str, Any]:
         return {"status": "error", "error": str(e)}
 
 
-def query_rag(query: str, top_k: int = 4) -> Dict[str, Any]:
-    """Retrieve relevant document contexts from vectorstore for a query."""
+def query_rag(query: str, top_k: int = 4, score_threshold: float = None) -> Dict[str, Any]:
+    """Retrieve relevant document contexts from vectorstore for a query with distance thresholding."""
     try:
         index_path = settings.vectorstore_dir / "faiss_index"
         if not index_path.exists():
             return {"status": "error", "error": "No indexed documents found. Please ingest documents first."}
 
+        if score_threshold is None:
+            score_threshold = getattr(settings, "RAG_RELEVANCE_THRESHOLD", 1.25)
+
         embeddings = get_embeddings()
         from langchain_community.vectorstores import FAISS
         vectorstore = FAISS.load_local(str(index_path), embeddings, allow_dangerous_deserialization=True)
 
-        docs = vectorstore.similarity_search(query, k=top_k)
+        docs_and_scores = vectorstore.similarity_search_with_score(query, k=top_k)
         contexts = []
-        for d in docs:
-            contexts.append({
-                "content": d.page_content,
-                "source": d.metadata.get("source", "unknown"),
-                "page": d.metadata.get("page", None)
-            })
+        for d, score in docs_and_scores:
+            logger.info(f"RAG Chunk Score for query '{query}': {score:.4f} (Threshold: {score_threshold})")
+            if score <= score_threshold:
+                contexts.append({
+                    "content": d.page_content,
+                    "source": d.metadata.get("source", "unknown"),
+                    "page": d.metadata.get("page", None),
+                    "relevance_score": float(score)
+                })
+            else:
+                logger.warning(f"RAG Chunk EXCLUDED (score {score:.4f} > threshold {score_threshold}): {d.page_content[:60]}...")
+
+        if not contexts:
+            return {"status": "no_relevant_docs", "query": query, "results": [], "message": "No documents met the relevance distance threshold."}
 
         return {"status": "success", "query": query, "results": contexts}
 

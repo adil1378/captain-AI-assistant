@@ -77,59 +77,89 @@ def _async_store_semantic_memory(turn_id: str, text: str, meta: dict):
         logger.warning(f"Background vector memory storage skipped: {e}")
 
 
+import uuid
+from uuid import uuid4
+
+
 # --- Pydantic Data Transfer Objects ---
 
 class ChatRequest(BaseModel):
     query: str
-    thread_id: str = "captain_api_session"
+    thread_id: str = ""
 
 
 class ChatResponse(BaseModel):
+    request_id: str
+    thread_id: str
     reply: str
     agent: str
     status: str = "success"
+    execution_time_seconds: float = 0.0
 
 
 class ClearHistoryRequest(BaseModel):
-    thread_id: str = "captain_api_session"
+    thread_id: str
 
 
 # --- REST Endpoints ---
 
 @api_v1_router.post("/chat", response_model=ChatResponse)
 async def chat_endpoint(req: ChatRequest):
-    """Non-blocking async REST chat endpoint with Supabase/SQLite persistence & ChromaDB memory."""
+    """Non-blocking async REST chat endpoint with UUID session isolation & structured telemetry."""
     if not req.query.strip():
         raise HTTPException(status_code=400, detail="Query cannot be empty.")
 
+    start_time = time.time()
+    request_id = f"req_{uuid4().hex[:8]}"
+    thread_id = req.thread_id.strip() if req.thread_id and req.thread_id.strip() else f"session_{uuid4().hex[:8]}"
+
     graph = await _get_graph()
-    config = {"configurable": {"thread_id": req.thread_id}}
+    config = {"configurable": {"thread_id": thread_id}}
 
     try:
         final_state = await graph.ainvoke(_make_state(req.query), config=config)
         messages = final_state.get("messages", [])
         agent = final_state.get("current_agent", "Captain")
         reply = messages[-1].content if messages else "I am processing your request."
+        exec_time = time.time() - start_time
 
-        # Persist conversation turn to Supabase PostgreSQL / SQLite
+        # Persist conversation turn
         turn_id = f"turn_{int(time.time() * 1000)}"
-        save_turn(req.thread_id, "user", req.query)
-        save_turn(req.thread_id, "assistant", reply)
+        save_turn(thread_id, "user", req.query)
+        save_turn(thread_id, "assistant", reply)
 
-        # Offload ChromaDB vector store indexing to background non-blocking thread
+        # Offload ChromaDB vector store indexing
         asyncio.create_task(
-            asyncio.to_thread(_async_store_semantic_memory, turn_id, f"User asked: {req.query} | Captain responded: {reply}", {"session_id": req.thread_id})
+            asyncio.to_thread(_async_store_semantic_memory, turn_id, f"User asked: {req.query} | Captain responded: {reply}", {"session_id": thread_id})
         )
 
-        return ChatResponse(reply=reply, agent=agent)
+        # Structured Observability Logging
+        logger.info(
+            f"REQUEST TELEMETRY | RequestID: {request_id} | Session: {thread_id} | "
+            f"Query: '{req.query}' | Agent: '{agent}' | Time: {exec_time:.3f}s | Status: SUCCESS"
+        )
+
+        return ChatResponse(
+            request_id=request_id,
+            thread_id=thread_id,
+            reply=reply,
+            agent=agent,
+            execution_time_seconds=round(exec_time, 3)
+        )
     except Exception as e:
-        logger.error(f"Chat API error: {e}")
+        exec_time = time.time() - start_time
+        logger.error(
+            f"REQUEST TELEMETRY ERROR | RequestID: {request_id} | Session: {thread_id} | "
+            f"Query: '{req.query}' | Error: {e} | Time: {exec_time:.3f}s"
+        )
         raise HTTPException(status_code=500, detail=str(e))
 
 
 @api_v1_router.get("/history")
-async def get_history_endpoint(thread_id: str = "captain_api_session", limit: int = 50):
+async def get_history_endpoint(thread_id: str, limit: int = 50):
     """Retrieve historical conversation turns for a given session thread."""
+    if not thread_id.strip():
+        raise HTTPException(status_code=400, detail="thread_id parameter is required.")
     try:
         history = get_history(session_id=thread_id, limit=limit)
         return {"session_id": thread_id, "turns": history}
@@ -145,10 +175,13 @@ from src.graph.state_graph import reset_thread_checkpoint
 @api_v1_router.post("/clear-history")
 async def clear_history_endpoint(req: ClearHistoryRequest):
     """Clear conversation history for a given session, invalidating DB turns, vector memories, and checkpointer state."""
+    if not req.thread_id.strip():
+        raise HTTPException(status_code=400, detail="thread_id is required.")
     try:
         deleted = clear_session(session_id=req.thread_id)
         clear_session_semantic_memory(session_id=req.thread_id)
         reset_thread_checkpoint(thread_id=req.thread_id)
+        logger.info(f"ClearHistory: Session '{req.thread_id}' cleared ({deleted} turns removed).")
         return {"status": "success", "session_id": req.thread_id, "deleted_turns": deleted}
     except Exception as e:
         logger.error(f"Clear history API error: {e}")
@@ -184,34 +217,46 @@ async def websocket_chat_endpoint(websocket: WebSocket):
         while True:
             data = await websocket.receive_json()
             query = (data.get("query") or data.get("message") or "").strip()
-            thread_id = data.get("thread_id", "ws_session")
+            thread_id = data.get("thread_id", "").strip() or f"ws_session_{uuid4().hex[:8]}"
 
             if not query:
                 logger.warning(f"WebSocket received empty query from payload: {data}")
                 continue
 
-            await websocket.send_json({"event": "AgentStarted", "agent": "router"})
+            start_time = time.time()
+            request_id = f"ws_req_{uuid4().hex[:8]}"
+            await websocket.send_json({"event": "AgentStarted", "agent": "router", "request_id": request_id, "thread_id": thread_id})
 
             config = {"configurable": {"thread_id": thread_id}}
             final_state = await graph.ainvoke(_make_state(query), config=config)
             messages = final_state.get("messages", [])
             reply = messages[-1].content if messages else "Done."
             agent = final_state.get("current_agent", "Captain")
+            exec_time = time.time() - start_time
 
             # Persist WebSocket conversation turn
             turn_id = f"turn_{int(time.time() * 1000)}"
             save_turn(thread_id, "user", query)
             save_turn(thread_id, "assistant", reply)
 
-            # Offload ChromaDB vector store indexing to background non-blocking thread
+            # Offload ChromaDB vector store indexing
             asyncio.create_task(
                 asyncio.to_thread(_async_store_semantic_memory, turn_id, f"User asked: {query} | Captain responded: {reply}", {"session_id": thread_id})
             )
 
+            # Structured Telemetry
+            logger.info(
+                f"WS TELEMETRY | RequestID: {request_id} | Session: {thread_id} | "
+                f"Query: '{query}' | Agent: '{agent}' | Time: {exec_time:.3f}s | Status: SUCCESS"
+            )
+
             await websocket.send_json({
                 "event": "AgentFinished",
+                "request_id": request_id,
+                "thread_id": thread_id,
                 "agent": agent,
                 "reply": reply,
+                "execution_time_seconds": round(exec_time, 3)
             })
 
     except WebSocketDisconnect:

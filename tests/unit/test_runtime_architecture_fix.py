@@ -129,3 +129,53 @@ def test_tool_security_permission_denial():
         assert "lacks required permission" in result.error
 
     asyncio.run(_test())
+
+
+# --- 6. SYSTEM AGENT INTENT DISAMBIGUATION TEST ---
+
+def test_system_agent_intent_disambiguation():
+    """Verify SystemAgent distinguishes conceptual explanations ('What is RAM?') from live actions."""
+    from src.agents.system_agent import SystemAgent
+    agent = SystemAgent()
+
+    assert agent._is_conceptual_explanation("what is ram?") is True
+    assert agent._is_conceptual_explanation("explain cpu usage") is True
+    assert agent._is_conceptual_explanation("what is a weather api?") is True
+
+    assert agent._is_conceptual_explanation("how much ram is my computer using?") is False
+    assert agent._is_conceptual_explanation("what is the weather in mumbai?") is False
+    assert agent._is_conceptual_explanation("run dir") is False
+
+
+# --- 7. RAG RELEVANCE SCORE FILTERING TEST ---
+
+def test_rag_relevance_filtering():
+    """Verify query_rag handles empty/non-matching index gracefully without throwing exceptions."""
+    from tools.rag_tools import query_rag
+    res = query_rag("Unmatched random query XYZ 99999", score_threshold=0.0001)
+    assert res["status"] in ["no_relevant_docs", "error"]
+
+
+# --- 8. SESSION ISOLATION (USER A vs USER B) TEST ---
+
+def test_session_uuid_isolation():
+    """Verify User A and User B maintain separate isolated conversation histories."""
+    user_a = "user_a_session_uuid_101"
+    user_b = "user_b_session_uuid_202"
+
+    save_turn(user_a, "user", "My name is Alice.")
+    save_turn(user_a, "assistant", "Hello Alice!")
+
+    save_turn(user_b, "user", "My name is Bob.")
+    save_turn(user_b, "assistant", "Hello Bob!")
+
+    history_a = get_history(user_a)
+    history_b = get_history(user_b)
+
+    assert len(history_a) == 2
+    assert len(history_b) == 2
+    assert "Alice" in history_a[0]["content"]
+    assert "Bob" in history_b[0]["content"]
+
+    clear_session(user_a)
+    clear_session(user_b)
