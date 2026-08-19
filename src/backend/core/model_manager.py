@@ -13,8 +13,8 @@ from loguru import logger
 
 class FallbackSmartLLM:
     """Enterprise Fallback Smart LLM Wrapper.
-    Tries ChatOllama first, and if Ollama port connection fails or times out,
-    seamlessly generates rich, intelligent AI responses to satisfy user requests."""
+    Tries ChatOllama first on configured base_url (and retries 127.0.0.1 if localhost fails).
+    Only returns fallback if Ollama is completely unreachable."""
 
     def __init__(self, primary_llm):
         self.primary_llm = primary_llm
@@ -23,28 +23,53 @@ class FallbackSmartLLM:
         try:
             return await self.primary_llm.ainvoke(input_messages, config=config, **kwargs)
         except Exception as e:
-            logger.warning(f"FallbackSmartLLM: Primary Ollama model unreachable ({e}). Using Builtin Smart Knowledge Engine.")
-            user_text = ""
-            for msg in reversed(input_messages):
-                if hasattr(msg, "content") and msg.content:
-                    user_text = str(msg.content)
-                    break
-            reply_text = self._generate_smart_response(user_text)
-            return AIMessage(content=reply_text)
+            logger.warning(f"FallbackSmartLLM: Primary Ollama invocation attempt failed ({e}). Retrying with explicit IPv4 127.0.0.1...")
+            try:
+                base_url = str(getattr(self.primary_llm, "base_url", "http://127.0.0.1:11434")).replace("localhost", "127.0.0.1")
+                model_name = getattr(self.primary_llm, "model", settings.CHAT_MODEL)
+                retry_llm = ChatOllama(
+                    model=model_name,
+                    base_url=base_url,
+                    temperature=getattr(self.primary_llm, "temperature", 0.5),
+                    num_predict=getattr(self.primary_llm, "num_predict", 512),
+                )
+                return await retry_llm.ainvoke(input_messages, config=config, **kwargs)
+            except Exception as e2:
+                logger.error(f"FallbackSmartLLM: Ollama connection failed after IPv4 retry ({e2}). Using Builtin Smart Knowledge Engine.", exc_info=True)
+                user_text = ""
+                for msg in reversed(input_messages):
+                    if hasattr(msg, "content") and msg.content:
+                        user_text = str(msg.content)
+                        break
+                reply_text = self._generate_smart_response(user_text)
+                return AIMessage(content=reply_text)
 
     async def astream(self, input_messages, config=None, **kwargs):
         try:
             async for chunk in self.primary_llm.astream(input_messages, config=config, **kwargs):
                 yield chunk
         except Exception as e:
-            logger.warning(f"FallbackSmartLLM: Streaming error ({e}). Yielding smart fallback.")
-            user_text = ""
-            for msg in reversed(input_messages):
-                if hasattr(msg, "content") and msg.content:
-                    user_text = str(msg.content)
-                    break
-            reply_text = self._generate_smart_response(user_text)
-            yield AIMessage(content=reply_text)
+            logger.warning(f"FallbackSmartLLM: Primary streaming failed ({e}). Retrying with explicit IPv4 127.0.0.1...")
+            try:
+                base_url = str(getattr(self.primary_llm, "base_url", "http://127.0.0.1:11434")).replace("localhost", "127.0.0.1")
+                model_name = getattr(self.primary_llm, "model", settings.CHAT_MODEL)
+                retry_llm = ChatOllama(
+                    model=model_name,
+                    base_url=base_url,
+                    temperature=getattr(self.primary_llm, "temperature", 0.5),
+                    num_predict=getattr(self.primary_llm, "num_predict", 512),
+                )
+                async for chunk in retry_llm.astream(input_messages, config=config, **kwargs):
+                    yield chunk
+            except Exception as e2:
+                logger.error(f"FallbackSmartLLM: Streaming error after IPv4 retry ({e2}). Yielding smart fallback.")
+                user_text = ""
+                for msg in reversed(input_messages):
+                    if hasattr(msg, "content") and msg.content:
+                        user_text = str(msg.content)
+                        break
+                reply_text = self._generate_smart_response(user_text)
+                yield AIMessage(content=reply_text)
 
     def _generate_smart_response(self, text: str) -> str:
         q = text.lower().strip()
@@ -65,9 +90,6 @@ class FallbackSmartLLM:
                 "versatility, and rich library ecosystem. It powers Artificial Intelligence, Machine Learning, "
                 "Data Science, Web Development (FastAPI, Django), Automation scripts, and Scientific Computing."
             )
-        if "weather" in q:
-            location = "Aurangabad" if "aurangabad" in q else "your region"
-            return f"Currently in {location}, the weather is pleasant with clear to partly cloudy skies and temperatures around 28°C to 32°C."
         if any(g in q for g in ["hi", "hello", "hey", "how are you"]):
             return "Hello! I am Captain AI OS, your 3D Desktop AI Assistant. I am online, fully connected, and ready to help you with coding, system tasks, or any questions!"
         if any(term in q for term in ["who are you", "what are you", "your name"]):
@@ -85,7 +107,7 @@ class FallbackSmartLLM:
                 "print(result)\n"
                 "```"
             )
-        return f"Captain AI OS has analyzed your request: '{text}'. All backend AI agent swarms, memory layers, and 3D visualizers are active!"
+        return f"Captain AI OS offline fallback: Unable to reach Ollama at {settings.OLLAMA_BASE_URL}. Please ensure the local Ollama service is running."
 
 
 class ModelManager:
@@ -96,18 +118,12 @@ class ModelManager:
     """
     def __init__(self):
         self.default_provider = settings.DEFAULT_PROVIDER
-        self.base_url = settings.OLLAMA_BASE_URL
-        self._cached_llms: Dict[str, Any] = {}
-
+        raw_url = settings.OLLAMA_BASE_URL
+        self.base_url = raw_url.replace("localhost", "127.0.0.1") if raw_url else "http://127.0.0.1:11434"
     def get_model(self, model_name: Optional[str] = None, temperature: float = 0.5, max_tokens: int = 512):
-        """Retrieve an initialized ChatModel with cached reuse and performance optimizations."""
+        """Retrieve an initialized ChatModel with performance optimizations."""
         target_model = model_name or settings.CHAT_MODEL
-        cache_key = f"{target_model}_{temperature}_{max_tokens}"
-
-        if cache_key in self._cached_llms:
-            return self._cached_llms[cache_key]
-
-        logger.info(f"ModelManager: Initializing model '{target_model}' (temp={temperature}, max_tokens={max_tokens})")
+        logger.info(f"ModelManager: Initializing model '{target_model}' on '{self.base_url}' (temp={temperature}, max_tokens={max_tokens})")
 
         try:
             llm = ChatOllama(
@@ -116,20 +132,16 @@ class ModelManager:
                 temperature=temperature,
                 num_predict=max_tokens,
             )
-            wrapped_llm = FallbackSmartLLM(llm)
-            self._cached_llms[cache_key] = wrapped_llm
-            return wrapped_llm
+            return FallbackSmartLLM(llm)
         except Exception as e:
-            logger.warning(f"Failed to load model '{target_model}': {e}. Using FallbackSmartLLM.")
+            logger.warning(f"Failed to load model '{target_model}': {e}. Retrying with ChatOllama on fallback base_url.")
             fallback_llm = ChatOllama(
                 model=settings.CHAT_MODEL,
-                base_url=self.base_url,
+                base_url="http://127.0.0.1:11434",
                 temperature=temperature,
                 num_predict=max_tokens,
             )
-            wrapped_llm = FallbackSmartLLM(fallback_llm)
-            self._cached_llms[cache_key] = wrapped_llm
-            return wrapped_llm
+            return FallbackSmartLLM(fallback_llm)
 
     async def stream_response(self, model_name: str, messages: list[BaseMessage]) -> AsyncGenerator[str, None]:
         """Stream tokens asynchronously and emit token events."""

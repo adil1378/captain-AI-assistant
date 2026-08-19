@@ -125,4 +125,4 @@ class ConversationAgent(BaseAgent):
         if any(term in q for term in ["who are you", "what are you", "your name"]):
             return "I am Captain AI OS — an intelligent 3D AI assistant powered by a multi-agent reasoning architecture."
 
-        return f"Regarding '{query}': I am processing this request. Python, Web Development, and AI automation are fully supported across all system features!"
+        return f"Captain AI OS offline notice: Unable to process '{query}'. Ollama server is offline or unreachable at {settings.OLLAMA_BASE_URL}."

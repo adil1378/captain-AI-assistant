@@ -19,7 +19,7 @@ class Settings(BaseSettings):
     CODER_MODEL: str = "qwen2.5-coder:7b"
     RAG_MODEL: str = "llama3.1"
     OLLAMA_EMBED_MODEL: str = "nomic-embed-text-v2-moe:latest"
-    OLLAMA_BASE_URL: str = "http://localhost:11434"
+    OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
     DEFAULT_PROVIDER: str = "ollama"
 
     # API Credentials & Search Provider Configuration

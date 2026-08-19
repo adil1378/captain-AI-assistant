@@ -9,7 +9,7 @@ class Settings(BaseSettings):
 
     # LLM Provider & Default Model
     llm_provider: str = Field(default="ollama", description="ollama, google, or openai")
-    ollama_base_url: str = Field(default="http://localhost:11434")
+    ollama_base_url: str = Field(default="http://127.0.0.1:11434")
     ollama_model: str = Field(default="llama3.1")
     
     # Task-Specialized Model Mapping
