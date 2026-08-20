@@ -22,21 +22,24 @@ from src.backend.config import settings
 from pydantic import BaseModel, Field
 
 
+from src.graph.state_graph import INTENT_TO_NODE
+
+
 # --- 1. MANDATORY ROUTING TESTS ---
 
 def test_router_word_boundary_false_positives():
     """Verify router eliminates substring false positives (program != ram, digital marketing != git)."""
-    assert classify_intent_hybrid("program") == "chat_agent"
-    assert classify_intent_hybrid("digital marketing") == "chat_agent"
+    assert INTENT_TO_NODE.get(classify_intent_hybrid("program").intent) == "chat_agent"
+    assert INTENT_TO_NODE.get(classify_intent_hybrid("digital marketing").intent) == "chat_agent"
 
 
 def test_router_intent_classification():
     """Verify intent router correctly routes queries based on intent rather than raw substring position."""
-    assert classify_intent_hybrid("weather API in Python") == "coder_agent"
-    assert classify_intent_hybrid("What is the weather in Mumbai?") == "system_agent"
-    assert classify_intent_hybrid("Write a Python function to calculate Fibonacci.") == "coder_agent"
-    assert classify_intent_hybrid("Search the latest information about OpenAI.") == "search_agent"
-    assert classify_intent_hybrid("Explain this uploaded document.") == "rag_agent"
+    assert INTENT_TO_NODE.get(classify_intent_hybrid("weather API in Python").intent) == "coder_agent"
+    assert INTENT_TO_NODE.get(classify_intent_hybrid("What is the weather in Mumbai?").intent) == "system_agent"
+    assert INTENT_TO_NODE.get(classify_intent_hybrid("Write a Python function to calculate Fibonacci.").intent) == "coder_agent"
+    assert INTENT_TO_NODE.get(classify_intent_hybrid("Search the latest information about OpenAI.").intent) == "search_agent"
+    assert INTENT_TO_NODE.get(classify_intent_hybrid("Explain this uploaded document.").intent) == "rag_agent"
 
 
 # --- 2. MANDATORY CURRENT QUERY & STATE PROPAGATION TESTS ---

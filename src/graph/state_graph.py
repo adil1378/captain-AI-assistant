@@ -6,92 +6,57 @@ from langgraph.checkpoint.memory import MemorySaver
 from src.agents.state import AgentState
 from src.agents.agent_registry import AgentRegistry
 from src.agents.agent_lifecycle_manager import AgentLifecycleManager
+from src.graph.router import classify_intent_hybrid, Intent, IntentResult
+from src.tools.location_tool import get_location_info
 from src.backend.core.model_manager import model_manager
 from src.backend.config import settings
 from utils.text_utils import clean_think_tags
 from loguru import logger
 
-# All valid agent routing keys
-_VALID_AGENTS = ["chat_agent", "coder_agent", "system_agent", "rag_agent", "search_agent", "comms_agent"]
+# Deterministic mapping from Intent to StateGraph Node
+INTENT_TO_NODE: Dict[Intent, str] = {
+    Intent.GREETING: "chat_agent",
+    Intent.GENERAL_QA: "chat_agent",
+    Intent.LOCATION: "location_node",
+    Intent.WEB_SEARCH: "search_agent",
+    Intent.WEATHER: "system_agent",
+    Intent.CODING: "coder_agent",
+    Intent.RAG: "rag_agent",
+    Intent.COMMS: "comms_agent",
+}
+
+_VALID_NODES = list(set(INTENT_TO_NODE.values()))
 
 # Global Checkpointer singleton handle for clearing session state
 _checkpointer_instance = None
 
 
-def _has_word(query: str, word: str) -> bool:
-    """Word-boundary regex match helper to prevent substring false positives."""
-    return bool(re.search(r'\b' + re.escape(word) + r'\b', query, re.IGNORECASE))
-
-
-def classify_intent_hybrid(user_query: str) -> str:
-    """
-    Enterprise Hybrid Intent Classifier.
-    Combines high-confidence word-boundary rules with intent pattern classification.
-    Eliminates substring false-positives (e.g. 'program' != 'ram', 'digital marketing' != 'git').
-    """
-    q_raw = user_query.strip()
-    q = q_raw.lower()
-
-    if not q:
-        return "chat_agent"
-
-    # Rule 1: High-confidence Technical / Coding intent (including weather API / coding queries)
-    coding_exact = ["def ", "class ", "import ", "syntax error", "refactor", "debug", "github", "git commit", "ci/cd", "pipeline", "fibonacci", "api in python", "weather api", "rest api"]
-    coding_combinations = (
-        ("write" in q or "build" in q or "create" in q or "how to" in q or "use" in q)
-        and ("code" in q or "function" in q or "script" in q or "python" in q or "api" in q or "endpoint" in q)
-    )
-    if any(kw in q for kw in coding_exact) or coding_combinations:
-        return "coder_agent"
-
-    # Rule 2: High-confidence Live System Metrics & Live Weather Forecast Intent
-    # Requires weather words AND live location/time intent (e.g., "weather in mumbai", "today's forecast")
-    weather_words = ["weather", "temperature", "forecast", "rain", "climate", "humid"]
-    live_weather_indicators = [" in ", " for ", " at ", " of ", "today", "now", "current", "live", "city", "forecast"]
-    
-    has_weather_word = any(_has_word(q, w) for w in weather_words)
-    has_live_indicator = any(ind in q for ind in live_weather_indicators)
-
-    system_phrases = ["system metrics", "memory usage", "cpu usage", "disk space", "os info", "battery status", "hardware metrics"]
-
-    if (has_weather_word and has_live_indicator) or any(kw in q for kw in system_phrases):
-        return "system_agent"
-
-    # Rule 3: High-confidence Document / RAG intent
-    rag_phrases = ["document", "uploaded file", "my notes", "pdf", "knowledge base", "from the doc", "explain this uploaded"]
-    if any(kw in q for kw in rag_phrases):
-        return "rag_agent"
-
-    # Rule 4: High-confidence Communication intent
-    comms_phrases = ["send email", "send mail", "whatsapp", "send message", "save contact", "add contact"]
-    if any(kw in q for kw in comms_phrases):
-        return "comms_agent"
-
-    # Rule 5: High-confidence Search intent
-    if q.startswith("search") or "search the latest" in q or "find online" in q or "google" in q or "latest news" in q:
-        return "search_agent"
-
-    # Default to general conversation agent
-    return "chat_agent"
-
-
 async def router_node(state: AgentState) -> Dict[str, Any]:
     """
-    Hybrid Intent Router Node.
-    Ensures state['user_query'] is authoritative and propagates it cleanly into state['messages'].
+    Validated Intent Router Node.
+    Returns structured IntentResult and deterministically maps to target node.
     """
     user_query = state.get("user_query", "").strip()
     messages = state.get("messages", [])
 
-    next_agent = classify_intent_hybrid(user_query)
-    logger.info(f"RouterNode: Query '{user_query}' -> Classified Intent: '{next_agent}'")
+    intent_result: IntentResult = classify_intent_hybrid(user_query)
+    next_node = INTENT_TO_NODE.get(intent_result.intent, "chat_agent")
+
+    logger.info(
+        f"RouterNode: Query '{user_query}' -> Intent: {intent_result.intent.value} "
+        f"(confidence={intent_result.confidence:.2f}) -> Node: '{next_node}'"
+    )
+
+    scratchpad = state.get("scratchpad", {})
+    scratchpad["intent_result"] = intent_result.model_dump()
 
     res: Dict[str, Any] = {
         "user_query": user_query,
-        "next_agent": next_agent
+        "next_agent": next_node,
+        "scratchpad": scratchpad
     }
 
-    # If messages is empty or tail message is not current user_query, return new HumanMessage for add_messages reducer
+    # Propagate HumanMessage cleanly
     if user_query:
         if not messages or not (isinstance(messages[-1], HumanMessage) and messages[-1].content == user_query):
             res["messages"] = [HumanMessage(content=user_query)]
@@ -99,10 +64,49 @@ async def router_node(state: AgentState) -> Dict[str, Any]:
     return res
 
 
+async def location_node(state: AgentState) -> Dict[str, Any]:
+    """
+    Standalone Location Node executing LocationTool geocoding.
+    Extracts location query and returns structured coordinates & interactive map URL.
+    """
+    user_query = state.get("user_query", "").strip()
+    scratchpad = state.get("scratchpad", {})
+    logger.info(f"LocationNode: Executing LocationTool for query '{user_query}'")
+
+    # Extract location name (e.g., "where is Aurangabad" -> "Aurangabad")
+    q_clean = user_query
+    for trigger in ["where is", "location of", "show on map", "coordinates of", "map of", "where located", "where in the world is"]:
+        if trigger in q_clean.lower():
+            pattern = re.compile(re.escape(trigger), re.IGNORECASE)
+            q_clean = pattern.sub("", q_clean).strip(" ?!.")
+            break
+
+    loc_res = await get_location_info(q_clean or user_query)
+    scratchpad["location_result"] = loc_res
+
+    if loc_res.get("status") == "success":
+        reply = (
+            f"📍 **Geographic Location Information for {loc_res['display_name']}**\n\n"
+            f"- **Coordinates:** Latitude `{loc_res['latitude']}`, Longitude `{loc_res['longitude']}`\n"
+            f"- **Type:** `{loc_res['type'].capitalize()}`\n\n"
+            f"🗺️ [View on Interactive OpenStreetMap]({loc_res['map_url']})"
+        )
+    else:
+        err_msg = loc_res.get("error", "Location lookup failed.")
+        reply = f"❌ Location lookup for '{user_query}' was unsuccessful: {err_msg}"
+
+    return {
+        "messages": [AIMessage(content=reply)],
+        "scratchpad": scratchpad,
+        "current_agent": "location_node",
+        "next_agent": "END"
+    }
+
+
 def create_captain_graph(registry: AgentRegistry, manager: AgentLifecycleManager, checkpointer: Any = None):
     """
     Builds the production V2 LangGraph StateGraph engine.
-    Integrates 6 pluggable agents with hybrid router_node and lifecycle manager execution.
+    Integrates agents & location_node with validated IntentResult router.
     """
     global _checkpointer_instance
     if checkpointer is None:
@@ -111,10 +115,11 @@ def create_captain_graph(registry: AgentRegistry, manager: AgentLifecycleManager
 
     builder = StateGraph(AgentState)
 
-    # 1. Add Router Node
+    # 1. Add Router Node & Location Node
     builder.add_node("router_node", router_node)
+    builder.add_node("location_node", location_node)
 
-    # 2. Wrap Agent Execution inside Lifecycle Manager Enforcement
+    # 2. Wrap Agent Nodes
     def make_agent_node(agent_name: str):
         async def agent_node_fn(state: AgentState) -> Dict[str, Any]:
             logger.info(f"LangGraph Node: invoking manager.execute_agent('{agent_name}')")
@@ -122,25 +127,16 @@ def create_captain_graph(registry: AgentRegistry, manager: AgentLifecycleManager
             return res
         return agent_node_fn
 
-    for agent_name in _VALID_AGENTS:
+    for agent_name in ["chat_agent", "coder_agent", "system_agent", "rag_agent", "search_agent", "comms_agent"]:
         builder.add_node(agent_name, make_agent_node(agent_name))
 
-    # 3. Add Error Recovery Node
+    # 3. Add Error Recovery Node (No hardcoded fake answers!)
     async def error_node_fn(state: AgentState) -> Dict[str, Any]:
-        err = state.get("error", "")
+        err = state.get("error", "Unknown service disruption")
         user_query = state.get("user_query", "")
         logger.warning(f"ErrorNode fallback triggered for query '{user_query}': {err}")
 
-        q_lower = user_query.lower()
-        if "python" in q_lower:
-            reply = "Python is a high-level, general-purpose programming language known for its clear syntax, versatility, and extensive libraries used across AI, data science, web development, and automation."
-        elif "weather" in q_lower:
-            loc = "Mumbai" if "mumbai" in q_lower else ("Aurangabad" if "aurangabad" in q_lower else "your area")
-            reply = f"Currently in {loc}, the weather is pleasant with partly cloudy skies and temperatures around 28°C to 32°C."
-        elif any(g in q_lower for g in ["hi", "hello", "hey"]):
-            reply = "Hello! I am Captain AI, your 3D Robot Assistant. How can I help you today?"
-        else:
-            reply = f"Regarding '{user_query}': I am processing your request. Python, Web Development, and AI automation are fully supported across all system features!"
+        reply = f"⚠️ Captain AI OS encountered a service error while processing '{user_query}': {err}"
 
         return {
             "messages": [AIMessage(content=reply)],
@@ -151,30 +147,29 @@ def create_captain_graph(registry: AgentRegistry, manager: AgentLifecycleManager
     # 4. Connect Edges
     builder.add_edge(START, "router_node")
 
-    # Conditional Routing from router_node
+    # Conditional Routing from router_node using valid node dictionary
     builder.add_conditional_edges(
         "router_node",
         lambda s: s.get("next_agent", "chat_agent"),
-        {agent: agent for agent in _VALID_AGENTS}
+        {node: node for node in _VALID_NODES}
     )
 
-    # Agent output conditional edges
-    def route_agent_output(state: AgentState) -> str:
+    # Output conditional edges from execution nodes
+    def route_execution_output(state: AgentState) -> str:
         if state.get("error"):
             return "error_node"
         next_a = state.get("next_agent", "END")
-        return next_a if next_a in _VALID_AGENTS else END
+        return next_a if next_a in _VALID_NODES else END
 
-    for agent_name in _VALID_AGENTS:
+    for node_name in _VALID_NODES:
         builder.add_conditional_edges(
-            agent_name,
-            route_agent_output,
-            {**{a: a for a in _VALID_AGENTS}, "error_node": "error_node", END: END}
+            node_name,
+            route_execution_output,
+            {**{n: n for n in _VALID_NODES}, "error_node": "error_node", END: END}
         )
 
     builder.add_edge("error_node", END)
 
-    # Compile with checkpointer for state persistence across turns
     compiled_graph = builder.compile(checkpointer=checkpointer)
-    logger.info("Captain AI OS V2 LangGraph StateGraph engine compiled successfully.")
+    logger.info("Captain AI OS V2 LangGraph StateGraph engine compiled successfully with IntentResult routing.")
     return compiled_graph

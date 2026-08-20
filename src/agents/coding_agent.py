@@ -24,6 +24,15 @@ class CodingAgent(BaseAgent):
     async def execute(self, state: AgentState) -> Dict[str, Any]:
         user_query = state.get("user_query", "")
         history = state.get("messages", [])
+        if not user_query and history:
+            last_msg = history[-1]
+            if isinstance(last_msg, dict):
+                user_query = last_msg.get("content", "")
+            elif hasattr(last_msg, "content"):
+                user_query = last_msg.content
+            else:
+                user_query = str(last_msg)
+
         scratchpad = state.get("scratchpad", {})
         query_lower = user_query.lower()
 
@@ -37,22 +46,23 @@ class CodingAgent(BaseAgent):
                 github_context = f"GITHUB STATUS: {user_info.get('error', 'Token not configured')}"
             logger.info("CodingAgent: Prepared GitHub integration context.")
 
-        llm = model_manager.get_model(model_name=settings.CODER_MODEL, temperature=0.2, max_tokens=2048)
+        coder_model = getattr(settings, "CHAT_MODEL", "llama3.2:latest")
+        llm = model_manager.get_model(model_name=coder_model, temperature=0.1, max_tokens=512)
 
         system_prompt = (
-            "You are Captain Coder, an expert software engineering agent with full GitHub & CI/CD workflow capabilities. "
-            "Write production-quality, clean, well-commented code. "
-            "Return complete code blocks with language identifiers. "
-            "When helping with GitHub repositories, workflows, or CI/CD pipelines, provide exact instructions or scripts."
+            "You are Captain Coder, an expert software engineering agent.\n"
+            "CRITICAL INSTRUCTIONS:\n"
+            "1. DO NOT output internal reasoning or <think> tags.\n"
+            "2. Always return your solution IMMEDIATELY as runnable code inside a markdown code block (e.g. ```python ... ```).\n"
+            "3. Provide clean, concise, runnable code."
         )
 
         messages = [SystemMessage(content=system_prompt)]
         if github_context:
             messages.append(SystemMessage(content=f"GitHub Integration Context:\n{github_context}"))
-        messages.extend(history)
-
-        if not any(isinstance(m, HumanMessage) for m in history):
-            messages.append(HumanMessage(content=user_query))
+        
+        # Pass active user_query with clean prompt context to ensure precise code generation
+        messages.append(HumanMessage(content=f"Task: Write code for the following request.\n\nUser Request: {user_query}"))
 
         try:
             text_chunks = []
@@ -62,8 +72,9 @@ class CodingAgent(BaseAgent):
                     chunk_str = chunk.content if hasattr(chunk, "content") else str(chunk)
                     text_chunks.append(chunk_str)
             except Exception as stream_err:
-                logger.warning(f"CodingAgent: Model stream failed ({stream_err}), retrying with fallback model '{settings.CHAT_MODEL}'")
-                fallback_llm = model_manager.get_model(model_name=settings.CHAT_MODEL, temperature=0.2, max_tokens=2048)
+                logger.error(f"CodingAgent: Model stream failed with error: {type(stream_err).__name__}: {stream_err}")
+                logger.exception("CodingAgent Exception Traceback:")
+                fallback_llm = model_manager.get_model(model_name=settings.CHAT_MODEL, temperature=0.2, max_tokens=1024)
                 text_chunks = []
                 async for chunk in fallback_llm.astream(messages):
                     await self.check_pause()
@@ -72,29 +83,22 @@ class CodingAgent(BaseAgent):
 
             code_out = "".join(text_chunks)
             clean_text = clean_think_tags(code_out)
+            if not clean_text or len(clean_text) < 5:
+                clean_text = code_out.replace("<think>", "").replace("</think>", "").strip()
 
             scratchpad["coder_output"] = clean_text
             return {
                 "messages": [AIMessage(content=clean_text)],
                 "scratchpad": scratchpad,
                 "current_agent": self.metadata.name,
-                "next_agent": "END",
+                "next_agent": "END"
             }
 
         except Exception as e:
-            logger.warning(f"CodingAgent fallback ({e})")
-            code_reply = (
-                "Here is a clean Python example:\n"
-                "```python\n"
-                "# Captain AI Core Coding Agent\n"
-                "def python_solution(query: str) -> str:\n"
-                "    return f'Python solution generated for: {query}'\n"
-                "\n"
-                "print(python_solution('Data Processing'))\n"
-                "```"
-            )
+            logger.warning(f"CodingAgent execution error ({e})")
+            error_reply = f"⚠️ CodingAgent Error: Failed to generate code block via model '{settings.CODER_MODEL}'. Error: {e}"
             return {
-                "messages": [AIMessage(content=code_reply)],
+                "messages": [AIMessage(content=error_reply)],
                 "scratchpad": scratchpad,
                 "current_agent": self.metadata.name,
                 "next_agent": "END",

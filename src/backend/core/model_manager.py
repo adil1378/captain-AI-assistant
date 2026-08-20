@@ -72,42 +72,7 @@ class FallbackSmartLLM:
                 yield AIMessage(content=reply_text)
 
     def _generate_smart_response(self, text: str) -> str:
-        q = text.lower().strip()
-        if "fastapi" in q:
-            return (
-                "FastAPI is a modern, high-performance web framework for building APIs with Python 3.8+ based on standard Python type hints. "
-                "It features fast execution, automatic OpenAPI documentation, and native asynchronous support."
-            )
-        if any(term in q for term in ["different", "difference", "versus", "vs", "compare"]):
-            return (
-                "Python is a general-purpose, high-level programming language used for building AI models, automation scripts, and general applications. "
-                "FastAPI is a specialized web framework written in Python specifically designed for building high-speed asynchronous REST APIs. "
-                "In summary: Python is the core programming language, while FastAPI is a modern web framework built using Python."
-            )
-        if "python" in q:
-            return (
-                "Python is a high-level, general-purpose programming language renowned for its readable syntax, "
-                "versatility, and rich library ecosystem. It powers Artificial Intelligence, Machine Learning, "
-                "Data Science, Web Development (FastAPI, Django), Automation scripts, and Scientific Computing."
-            )
-        if any(g in q for g in ["hi", "hello", "hey", "how are you"]):
-            return "Hello! I am Captain AI OS, your 3D Desktop AI Assistant. I am online, fully connected, and ready to help you with coding, system tasks, or any questions!"
-        if any(term in q for term in ["who are you", "what are you", "your name"]):
-            return "I am Captain AI OS — an enterprise multi-agent 3D desktop operating system powered by LangGraph, FastAPI, and Three.js."
-        if any(term in q for term in ["code", "script", "program", "function"]):
-            return (
-                "Here is a clean Python example:\n"
-                "```python\n"
-                "# Captain AI Core Script\n"
-                "def process_task(task_name: str) -> dict:\n"
-                "    print(f'Processing {task_name}...')\n"
-                "    return {'status': 'success', 'task': task_name}\n"
-                "\n"
-                "result = process_task('System Diagnostic')\n"
-                "print(result)\n"
-                "```"
-            )
-        return f"Captain AI OS offline fallback: Unable to reach Ollama at {settings.OLLAMA_BASE_URL}. Please ensure the local Ollama service is running."
+        return f"⚠️ Service Error: Local Ollama model server at {settings.OLLAMA_BASE_URL} is unreachable or model failed to stream response."
 
 
 class ModelManager:

@@ -14,8 +14,8 @@ class Settings(BaseSettings):
     
     # Task-Specialized Model Mapping
     chat_model: str = Field(default="llama3.2")
-    coder_model: str = Field(default="qwen2.5-coder:7b")
-    rag_model: str = Field(default="llama3.1")
+    coder_model: str = Field(default="qwen3:4b")
+    rag_model: str = Field(default="llama3.2")
     ollama_embed_model: str = Field(default="nomic-embed-text-v2-moe:latest")
     
     # Search Engine Settings (duckduckgo, tavily, google, or serpapi)

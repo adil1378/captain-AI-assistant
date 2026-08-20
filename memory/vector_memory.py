@@ -41,6 +41,48 @@ def _get_collection(name: str = "captain_semantic_memory"):
     return client.get_or_create_collection(name=name)
 
 
+def should_store_semantic_memory(user_text: str) -> bool:
+    """
+    Selective Memory Storage Discipline Validator.
+    Determines if a user turn is worthy of long-term ChromaDB vector memory indexing.
+    Only stores explicit user preferences, facts, project decisions, and explicit 'remember' commands.
+    Prevents storage of greetings, ordinary Q&A, weather, news, system metrics, and location queries.
+    """
+    if not user_text:
+        return False
+
+    q = user_text.lower().strip()
+    words = q.split()
+
+    # Rule 1: Reject short trivial turns (< 4 words) unless explicit command
+    if len(words) < 4 and not any(k in q for k in ["remember", "prefer", "my name", "my stack"]):
+        return False
+
+    # Rule 2: Explicit DO NOT STORE patterns
+    greetings = ["hi", "hello", "hey", "good morning", "good evening", "how are you"]
+    if any(q.startswith(g) for g in greetings) or q in greetings:
+        return False
+
+    ephemeral_topics = [
+        "weather", "temperature", "forecast", "news", "system metrics",
+        "cpu usage", "ram", "disk", "where is", "location of", "show on map",
+        "what is python", "what is fastapi", "tell me about"
+    ]
+    if any(topic in q for topic in ephemeral_topics):
+        return False
+
+    # Rule 3: Explicit STORE patterns (High-value facts & preferences)
+    high_value_triggers = [
+        "remember", "prefer", "my name", "my project", "my email", "my stack",
+        "our stack", "we decided", "note that", "store this", "always use",
+        "never use", "i live in", "my location is"
+    ]
+    if any(trigger in q for trigger in high_value_triggers):
+        return True
+
+    return False
+
+
 def store_semantic_memory(memory_id: str, text: str, metadata: Optional[Dict[str, Any]] = None) -> bool:
     """
     Store a text memory/fact into ChromaDB.

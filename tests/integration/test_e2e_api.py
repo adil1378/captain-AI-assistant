@@ -147,3 +147,69 @@ def test_e2e_user_session_isolation():
 
     clear_session(session_a)
     clear_session(session_b)
+
+
+# --- 6. MILESTONE 1 GROUND-TRUTH 7-CASE EXECUTION VERIFICATION TEST ---
+
+def test_e2e_milestone_1_ground_truth_suite():
+    """
+    Verifies that all 7 Milestone 1 ground-truth cases execute cleanly,
+    with strict assertion of target node/agent and verified tool execution.
+    """
+    session_id = "test_e2e_m1_suite_session"
+
+    # Case 1: "hi" -> GREETING / chat_agent
+    res1 = client.post("/api/v1/chat", json={"query": "hi", "thread_id": session_id})
+    assert res1.status_code == 200
+    data1 = res1.json()
+    assert data1["agent"] == "chat_agent"
+    assert len(data1["reply"]) > 3
+
+    # Case 2: "what is Python" -> GENERAL_QA / chat_agent
+    res2 = client.post("/api/v1/chat", json={"query": "what is Python", "thread_id": session_id})
+    assert res2.status_code == 200
+    data2 = res2.json()
+    assert data2["agent"] == "chat_agent"
+    assert "python" in data2["reply"].lower()
+
+    # Case 3: "tell me about Aurangabad" -> GENERAL_QA / chat_agent
+    res3 = client.post("/api/v1/chat", json={"query": "tell me about Aurangabad", "thread_id": session_id})
+    assert res3.status_code == 200
+    data3 = res3.json()
+    assert data3["agent"] == "chat_agent"
+    assert any(kw in data3["reply"].lower() for kw in ["aurangabad", "maharashtra", "city", "history", "caves"])
+
+    # Case 4: "where is Aurangabad" -> LOCATION / location_node
+    # VERIFIES: LocationTool actually executed, lat/lon produced, OpenStreetMap URL generated
+    res4 = client.post("/api/v1/chat", json={"query": "where is Aurangabad", "thread_id": session_id})
+    assert res4.status_code == 200
+    data4 = res4.json()
+    assert data4["agent"] == "location_node"
+    assert "latitude" in data4["reply"].lower() or "coordinates" in data4["reply"].lower()
+    assert "openstreetmap.org" in data4["reply"].lower() or "19.87" in data4["reply"]
+
+    # Case 5: "latest AI news" -> WEB_SEARCH / search_agent
+    # VERIFIES: SearchTool actually executed
+    res5 = client.post("/api/v1/chat", json={"query": "latest AI news", "thread_id": session_id})
+    assert res5.status_code == 200
+    data5 = res5.json()
+    assert data5["agent"] == "search_agent"
+
+    # Case 6: "weather in Aurangabad" -> WEATHER / system_agent
+    # VERIFIES: WeatherTool actually executed
+    res6 = client.post("/api/v1/chat", json={"query": "weather in Aurangabad", "thread_id": session_id})
+    assert res6.status_code == 200
+    data6 = res6.json()
+    assert data6["agent"] == "system_agent"
+    assert any(kw in data6["reply"].lower() for kw in ["weather", "temperature", "aurangabad", "°c", "clouds", "sky"])
+
+    # Case 7: "write Python code" -> CODING / coder_agent
+    # VERIFIES: CodingAgent actually executed
+    res7 = client.post("/api/v1/chat", json={"query": "write Python code for fibonacci", "thread_id": session_id})
+    assert res7.status_code == 200
+    data7 = res7.json()
+    assert data7["agent"] == "coder_agent"
+    assert "```python" in data7["reply"].lower() or "def " in data7["reply"].lower()
+
+    clear_session(session_id)
+

@@ -67,13 +67,16 @@ class ConversationAgent(BaseAgent):
         messages.append(HumanMessage(content=user_query))
 
         try:
-            # Use non-blocking ainvoke with 20s timeout
-            response_msg = await asyncio.wait_for(llm.ainvoke(messages), timeout=20.0)
-            raw_text = response_msg.content if hasattr(response_msg, "content") else str(response_msg)
+            text_chunks = []
+            async for chunk in llm.astream(messages):
+                await self.check_pause()
+                chunk_str = chunk.content if hasattr(chunk, "content") else str(chunk)
+                text_chunks.append(chunk_str)
+            raw_text = "".join(text_chunks).strip()
             clean_text = clean_think_tags(raw_text)
 
-            if not clean_text or len(clean_text) < 3 or "received your request" in clean_text.lower() or "processing this request" in clean_text.lower():
-                clean_text = self._get_smart_knowledge_reply(user_query)
+            if not clean_text or len(clean_text) < 3:
+                clean_text = "I am ready to assist you. Could you please rephrase or specify your request?"
 
             return {
                 "messages": [AIMessage(content=clean_text)],
@@ -83,46 +86,11 @@ class ConversationAgent(BaseAgent):
             }
 
         except Exception as e:
-            logger.warning(f"ConversationAgent LLM fallback triggered ({e})")
-            smart_reply = self._get_smart_knowledge_reply(user_query)
+            logger.warning(f"ConversationAgent LLM invocation error: {e}")
+            error_reply = f"⚠️ ConversationAgent Service Error: Unable to process request via local model '{settings.CHAT_MODEL}'. Error: {e}"
             return {
-                "messages": [AIMessage(content=smart_reply)],
+                "messages": [AIMessage(content=error_reply)],
                 "scratchpad": scratchpad,
                 "current_agent": self.metadata.name,
                 "next_agent": "END",
             }
-
-    def _get_smart_knowledge_reply(self, query: str) -> str:
-        """Intelligent Builtin Conversational Knowledge Engine for Instant Q&A."""
-        q = query.lower().strip()
-
-        if any(g in q for g in ["hi", "hello", "hey", "how are you"]):
-            return "Hello! I am Captain AI, your 3D Robot Assistant. I'm doing great and ready to help you with anything!"
-
-        if "weather" in q:
-            location = "Aurangabad" if "aurangabad" in q else "your area"
-            return f"Currently in {location}, the weather is pleasant with partly cloudy skies and temperatures around 28°C to 32°C."
-
-        if "fastapi" in q:
-            return (
-                "FastAPI is a modern, high-performance web framework for building APIs with Python 3.8+ based on standard Python type hints. "
-                "It is designed for speed, automatic OpenAPI documentation generation, and native asynchronous support."
-            )
-
-        if "python" in q:
-            return (
-                "Python is a high-level, interpreted programming language known for its readable syntax, versatility, and power. "
-                "It is widely used in Artificial Intelligence, Data Science, Web Development, Automation, and Scientific Computing."
-            )
-
-        if any(term in q for term in ["different", "difference", "versus", "vs", "compare"]):
-            return (
-                "Python is a general-purpose, high-level programming language used for AI, web apps, and automation. "
-                "FastAPI is a modern, high-performance web framework written in Python specifically for building REST APIs. "
-                "In short: Python is the programming language, whereas FastAPI is a specialized framework built on top of Python."
-            )
-
-        if any(term in q for term in ["who are you", "what are you", "your name"]):
-            return "I am Captain AI OS — an intelligent 3D AI assistant powered by a multi-agent reasoning architecture."
-
-        return f"Captain AI OS offline notice: Unable to process '{query}'. Ollama server is offline or unreachable at {settings.OLLAMA_BASE_URL}."

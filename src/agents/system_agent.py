@@ -77,7 +77,8 @@ class SystemAgent(BaseAgent):
         return any(trigger in query_lower for trigger in conceptual_triggers)
 
     async def execute(self, state: AgentState) -> Dict[str, Any]:
-        from src.tools.global_tools import tool_invocation_layer, init_global_tools, ToolExecutionStatus
+        from src.tools.global_tools import tool_invocation_layer, init_global_tools
+        from src.tools.tool_invocation_layer import ToolExecutionStatus
 
         user_query = state.get("user_query", "")
         history = state.get("messages", [])  # Full conversation history from LangGraph

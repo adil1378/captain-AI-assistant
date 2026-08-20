@@ -16,8 +16,8 @@ class Settings(BaseSettings):
 
     # Model Manager Configurations
     CHAT_MODEL: str = "llama3.2"
-    CODER_MODEL: str = "qwen2.5-coder:7b"
-    RAG_MODEL: str = "llama3.1"
+    CODER_MODEL: str = "qwen3:4b"
+    RAG_MODEL: str = "llama3.2"
     OLLAMA_EMBED_MODEL: str = "nomic-embed-text-v2-moe:latest"
     OLLAMA_BASE_URL: str = "http://127.0.0.1:11434"
     DEFAULT_PROVIDER: str = "ollama"

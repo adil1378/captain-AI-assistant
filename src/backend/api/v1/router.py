@@ -135,10 +135,15 @@ async def chat_endpoint(req: ChatRequest):
         save_turn(raw_session_id, "user", req.query)
         save_turn(raw_session_id, "assistant", reply)
 
-        # Offload ChromaDB vector store indexing
-        asyncio.create_task(
-            asyncio.to_thread(_async_store_semantic_memory, turn_id, f"User asked: {req.query} | Captain responded: {reply}", {"session_id": raw_session_id})
-        )
+        # Selective Vector Memory Discipline (Only index high-value user preferences/facts)
+        from memory.vector_memory import should_store_semantic_memory
+        if should_store_semantic_memory(req.query):
+            asyncio.create_task(
+                asyncio.to_thread(_async_store_semantic_memory, turn_id, f"User asked: {req.query} | Captain responded: {reply}", {"session_id": raw_session_id})
+            )
+            logger.info(f"VectorMemory: Scheduled long-term index for high-value query '{req.query}'")
+        else:
+            logger.debug(f"VectorMemory: Skipped indexing non-factual / ephemeral query '{req.query}'")
 
         # Structured Observability Logging
         logger.info(
