@@ -130,10 +130,10 @@ async def chat_endpoint(req: ChatRequest):
         reply = messages[-1].content if messages else "I am processing your request."
         exec_time = time.time() - start_time
 
-        # Persist conversation turn under session_id
+        # Persist conversation turn under session_id in non-blocking background task
         turn_id = f"turn_{int(time.time() * 1000)}"
-        save_turn(raw_session_id, "user", req.query)
-        save_turn(raw_session_id, "assistant", reply)
+        asyncio.create_task(asyncio.to_thread(save_turn, raw_session_id, "user", req.query))
+        asyncio.create_task(asyncio.to_thread(save_turn, raw_session_id, "assistant", reply))
 
         # Selective Vector Memory Discipline (Only index high-value user preferences/facts)
         from memory.vector_memory import should_store_semantic_memory
@@ -247,10 +247,10 @@ async def websocket_chat_endpoint(websocket: WebSocket):
             agent = final_state.get("current_agent", "Captain")
             exec_time = time.time() - start_time
 
-            # Persist WebSocket conversation turn
+            # Persist WebSocket conversation turn in non-blocking background task
             turn_id = f"turn_{int(time.time() * 1000)}"
-            save_turn(raw_session_id, "user", query)
-            save_turn(raw_session_id, "assistant", reply)
+            asyncio.create_task(asyncio.to_thread(save_turn, raw_session_id, "user", query))
+            asyncio.create_task(asyncio.to_thread(save_turn, raw_session_id, "assistant", reply))
 
             # Offload ChromaDB vector store indexing
             asyncio.create_task(

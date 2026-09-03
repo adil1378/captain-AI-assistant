@@ -33,11 +33,12 @@ class ConversationAgent(BaseAgent):
         # Separate previous conversation history from current query
         past_messages = [m for m in (history[:-1] if history else []) if isinstance(m, (HumanMessage, AIMessage))][-6:]
 
-        # Query ChromaDB Vector Memory (threshold-filtered)
+        # Fast memory check: query ChromaDB only for longer queries containing recall triggers
         semantic_context = ""
-        if q_clean not in _BASIC_GREETINGS and len(q_clean.split()) >= 3:
+        memory_triggers = ["remember", "recall", "prefer", "my name", "what is my", "project", "stack", "history"]
+        if any(tr in q_clean for tr in memory_triggers) or (q_clean not in _BASIC_GREETINGS and len(q_clean.split()) >= 5):
             try:
-                semantic_matches = query_semantic_memory(user_query, top_k=2)
+                semantic_matches = query_semantic_memory(user_query, top_k=1)
                 if semantic_matches:
                     match_texts = [f"- {m['document']}" for m in semantic_matches if m.get('document')]
                     if match_texts:
@@ -46,14 +47,14 @@ class ConversationAgent(BaseAgent):
             except Exception as e:
                 logger.warning(f"ConversationAgent: ChromaDB vector recall skipped ({e})")
 
-        # Fast model initialization
-        llm = model_manager.get_model(model_name=settings.CHAT_MODEL, temperature=0.5, max_tokens=256)
+        # Fast model initialization with lean max_tokens for speed
+        llm = model_manager.get_model(model_name=settings.CHAT_MODEL, temperature=0.3, max_tokens=200)
 
         system_prompt = (
-            "You are Captain, an intelligent, fast, and friendly multi-agent AI assistant.\n"
-            "INSTRUCTIONS:\n"
-            "1. Answer the CURRENT USER QUERY accurately, concisely, and directly.\n"
-            "2. Use RECENT CONVERSATION and RELEVANT LONG_TERM_MEMORY only as context.\n"
+            "You are Captain, an intelligent, high-speed, and friendly AI assistant.\n"
+            "CRITICAL SPEED INSTRUCTION:\n"
+            "1. Provide extremely concise, direct, and accurate answers immediately.\n"
+            "2. Keep responses brief (1-2 paragraphs max) without filler words or internal reasoning.\n"
             "3. Format answers cleanly in markdown."
         )
 

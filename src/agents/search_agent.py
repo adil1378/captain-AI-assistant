@@ -115,10 +115,10 @@ class SearchAgent(BaseAgent):
             context_text = f"[Search error: {error}]"
 
         system_prompt = (
-            "You are Captain Search, an expert research agent. "
-            "Using the web search results provided below as your primary source, "
-            "synthesize a clear, accurate, and well-structured answer to the user's query. "
-            "Cite specific results where relevant."
+            "You are Captain Search, a high-speed research agent.\n"
+            "CRITICAL SPEED INSTRUCTION:\n"
+            "1. Synthesize a brief, accurate, and direct answer using the search results.\n"
+            "2. Keep responses short and to the point without filler sentences."
         )
 
         messages_to_send = [
@@ -129,9 +129,9 @@ class SearchAgent(BaseAgent):
             messages_to_send.append(HumanMessage(content=user_query))
 
         llm = model_manager.get_model(
-            model_name=settings.CHAT_MODEL,
-            temperature=0.3,
-            max_tokens=512
+            model_name=getattr(settings, "CHAT_MODEL", "llama3.2"),
+            temperature=0.2,
+            max_tokens=250
         )
 
         try:

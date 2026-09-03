@@ -46,15 +46,15 @@ class CodingAgent(BaseAgent):
                 github_context = f"GITHUB STATUS: {user_info.get('error', 'Token not configured')}"
             logger.info("CodingAgent: Prepared GitHub integration context.")
 
-        coder_model = getattr(settings, "CHAT_MODEL", "llama3.2:latest")
-        llm = model_manager.get_model(model_name=coder_model, temperature=0.1, max_tokens=512)
+        coder_model = getattr(settings, "CODER_MODEL", None) or getattr(settings, "CHAT_MODEL", "llama3.2")
+        llm = model_manager.get_model(model_name=coder_model, temperature=0.1, max_tokens=384)
 
         system_prompt = (
-            "You are Captain Coder, an expert software engineering agent.\n"
-            "CRITICAL INSTRUCTIONS:\n"
+            "You are Captain Coder, a high-speed expert software engineering agent.\n"
+            "CRITICAL SPEED INSTRUCTIONS:\n"
             "1. DO NOT output internal reasoning or <think> tags.\n"
-            "2. Always return your solution IMMEDIATELY as runnable code inside a markdown code block (e.g. ```python ... ```).\n"
-            "3. Provide clean, concise, runnable code."
+            "2. Always return your solution IMMEDIATELY as runnable code inside a markdown code block.\n"
+            "3. Keep code compact and concise with no lengthy conversational preambles."
         )
 
         messages = [SystemMessage(content=system_prompt)]

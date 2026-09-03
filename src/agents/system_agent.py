@@ -166,10 +166,10 @@ class SystemAgent(BaseAgent):
 
         # --- Build prompt with tool context ---
         system_prompt = (
-            "You are Captain System, an elite assistant specialized in computer hardware metrics, "
-            "weather reporting, and system operations. Provide clean, informative, well-formatted responses. "
-            "When answering conceptual questions (e.g. 'What is RAM?'), explain the concepts clearly without using live tool metrics. "
-            "When real-time system data is provided, use it directly and accurately."
+            "You are Captain System, a high-speed system operations assistant.\n"
+            "CRITICAL SPEED INSTRUCTIONS:\n"
+            "1. Be extremely concise, direct, and fast.\n"
+            "2. When real-time system/weather data is provided, summarize key metrics in 2-3 short lines."
         )
 
         messages_to_send = [SystemMessage(content=system_prompt)]
@@ -181,7 +181,7 @@ class SystemAgent(BaseAgent):
         if not history or not (isinstance(history[-1], HumanMessage) and history[-1].content == user_query):
             messages_to_send.append(HumanMessage(content=user_query))
 
-        llm = model_manager.get_model(model_name=settings.CHAT_MODEL, temperature=0.3, max_tokens=1024)
+        llm = model_manager.get_model(model_name=getattr(settings, "CHAT_MODEL", "llama3.2"), temperature=0.2, max_tokens=200)
 
         try:
             text_chunks = []

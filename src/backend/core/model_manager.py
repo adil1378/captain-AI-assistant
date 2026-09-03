@@ -82,13 +82,52 @@ class ModelManager:
     health monitoring, context window management, and streaming tokens.
     """
     def __init__(self):
-        self.default_provider = settings.DEFAULT_PROVIDER
-        raw_url = settings.OLLAMA_BASE_URL
+        self.default_provider = getattr(settings, "DEFAULT_PROVIDER", "ollama")
+        raw_url = getattr(settings, "OLLAMA_BASE_URL", "http://127.0.0.1:11434")
         self.base_url = raw_url.replace("localhost", "127.0.0.1") if raw_url else "http://127.0.0.1:11434"
-    def get_model(self, model_name: Optional[str] = None, temperature: float = 0.5, max_tokens: int = 512):
-        """Retrieve an initialized ChatModel with performance optimizations."""
-        target_model = model_name or settings.CHAT_MODEL
-        logger.info(f"ModelManager: Initializing model '{target_model}' on '{self.base_url}' (temp={temperature}, max_tokens={max_tokens})")
+
+    def get_model(self, model_name: Optional[str] = None, temperature: float = 0.3, max_tokens: int = 256):
+        """Retrieve an initialized ChatModel with performance optimizations for fast responses."""
+        import os
+        target_provider = (getattr(settings, "DEFAULT_PROVIDER", None) or getattr(settings, "LLM_PROVIDER", "ollama")).lower()
+        gemini_key = getattr(settings, "GEMINI_API_KEY", None) or getattr(settings, "GOOGLE_API_KEY", None) or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        openai_key = getattr(settings, "OPENAI_API_KEY", None) or os.getenv("OPENAI_API_KEY")
+
+        # 1. Google Gemini Provider (Super fast sub-second inference)
+        if target_provider in ["google", "gemini"] or (gemini_key and target_provider == "auto"):
+            try:
+                from langchain_google_genai import ChatGoogleGenerativeAI
+                target_model = model_name if (model_name and "gemini" in model_name) else "gemini-1.5-flash"
+                logger.info(f"ModelManager: Using ChatGoogleGenerativeAI '{target_model}' (max_tokens={max_tokens})")
+                llm = ChatGoogleGenerativeAI(
+                    model=target_model,
+                    google_api_key=gemini_key,
+                    temperature=temperature,
+                    max_output_tokens=max_tokens,
+                )
+                return FallbackSmartLLM(llm)
+            except Exception as e:
+                logger.warning(f"ModelManager: Google Gemini load failed ({e}), falling back to Ollama.")
+
+        # 2. OpenAI Provider (Super fast sub-second inference)
+        if target_provider in ["openai", "gpt"] or (openai_key and target_provider == "auto"):
+            try:
+                from langchain_openai import ChatOpenAI
+                target_model = model_name if (model_name and "gpt" in model_name) else "gpt-4o-mini"
+                logger.info(f"ModelManager: Using ChatOpenAI '{target_model}' (max_tokens={max_tokens})")
+                llm = ChatOpenAI(
+                    model=target_model,
+                    api_key=openai_key,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                )
+                return FallbackSmartLLM(llm)
+            except Exception as e:
+                logger.warning(f"ModelManager: OpenAI load failed ({e}), falling back to Ollama.")
+
+        # 3. Local Ollama Provider (Optimized for speed and minimal latency)
+        target_model = model_name or getattr(settings, "CHAT_MODEL", "llama3.2")
+        logger.info(f"ModelManager: Initializing ChatOllama model '{target_model}' on '{self.base_url}' (temp={temperature}, max_tokens={max_tokens})")
 
         try:
             llm = ChatOllama(
@@ -101,7 +140,7 @@ class ModelManager:
         except Exception as e:
             logger.warning(f"Failed to load model '{target_model}': {e}. Retrying with ChatOllama on fallback base_url.")
             fallback_llm = ChatOllama(
-                model=settings.CHAT_MODEL,
+                model=getattr(settings, "CHAT_MODEL", "llama3.2"),
                 base_url="http://127.0.0.1:11434",
                 temperature=temperature,
                 num_predict=max_tokens,

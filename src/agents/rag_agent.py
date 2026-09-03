@@ -61,11 +61,10 @@ class RagAgent(BaseAgent):
 
         # --- Build LLM prompt ---
         system_prompt = (
-            "You are Captain RAG, an expert document analyst. "
-            "Answer the user's question using ONLY the provided document context below. "
-            "If the context does not contain enough information, say so clearly. "
-            "Cite source references where appropriate. "
-            "Format your answer in clear, structured markdown."
+            "You are Captain RAG, a high-speed document analyst.\n"
+            "CRITICAL SPEED INSTRUCTION:\n"
+            "1. Answer the query concisely using only the provided document context.\n"
+            "2. Keep responses direct and focused."
         )
 
         messages_to_send = [
@@ -78,9 +77,9 @@ class RagAgent(BaseAgent):
             messages_to_send.append(HumanMessage(content=user_query))
 
         llm = model_manager.get_model(
-            model_name=settings.RAG_MODEL,
+            model_name=getattr(settings, "RAG_MODEL", getattr(settings, "CHAT_MODEL", "llama3.2")),
             temperature=0.2,
-            max_tokens=2048
+            max_tokens=300
         )
 
         try:
