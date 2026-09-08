@@ -1,7 +1,7 @@
 from typing import Dict, Any
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from agents.state import AgentState
-from core.llm_factory import get_llm
+from providers.llm import get_llm
 from tools.rag_tools import rag_search_tool
 from utils.text_utils import clean_think_tags
 from loguru import logger

@@ -1,7 +1,7 @@
 from typing import Dict, Any
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from agents.state import AgentState
-from core.llm_factory import get_llm
+from providers.llm import get_llm
 from tools.search import multi_search
 from tools.web_scraper import scrape_webpage
 from utils.text_utils import clean_think_tags

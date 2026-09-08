@@ -3,7 +3,7 @@ from langchain_core.messages import AIMessage
 from agents.state import AgentState
 from tools.system_tools import get_system_metrics, run_terminal_command
 from tools.weather import get_live_weather
-from core.llm_factory import get_llm
+from providers.llm import get_llm
 from loguru import logger
 
 
