@@ -99,3 +99,46 @@ Each modification must strictly satisfy:
 1. **Zero Regression**: All 180 existing baseline tests must pass.
 2. **Phase 1 Test Suite**: New unit tests covering `app/state.py`, `app/runtime.py`, `config.py`, and `providers/` must pass 100%.
 3. **Clean Environment**: No plaintext secrets in repository or history.
+
+---
+
+## 5. Phase 2: Existing Pet → Current Rendering → PySide6 Integration Approach
+
+### A. Existing Pet Identification
+- **Visual Identity**: 3D EMO Desktop AI Robot Pet Character.
+- **Source Location**: `ui/web/app.js` & `ui/web/app_v33.js` (lines 872–1266).
+- **DOM & Stage Canvas**: `ui/web/index.html` (`<canvas id="three-webgl-canvas">` and `.jarvis-core-container`).
+- **Styling & Shaders**: `ui/web/style.css` (lines 42–55).
+
+### B. Current Rendering Technology
+- **3D Geometry & Meshes**: Three.js (r128) WebGL scene.
+  - Head Shell: Dark charcoal matte chassis (`BoxGeometry(2.3, 2.1, 1.9)`, `#1c1d22`).
+  - Silver Visor Bezel: Metal rim (`PlaneGeometry(1.85, 1.45)`, `#4a4d5a`).
+  - Visor Screen: Canvas-backed texture (`CanvasTexture`, `#00f2fe` neon glow, `shadowBlur: 20`).
+  - Headphones: Smooth cubic Bezier arch (`TubeGeometry`, `#4e2a84` purple), earcups (`#22242e`), glowing cyan LED rings (`#00f2fe`).
+  - Robot Feet: Dual rounded foot pods (`BoxGeometry(0.85, 0.38, 1.25)`, `#16171d`).
+  - Table Stage Podium: Grounding contact shadow, dark stage disk, metallic ring edge, and skirt.
+- **Dynamic LED Facial Expressions**: 18+ expressions (`happy`, `blinking`, `speaking` with 4-frame lip-sync mouth engine, `thinking` monocle, `cool`, `laughing`, `angry`, `shy`, `salute`, `love`, `star`, etc.).
+- **Animations**: Idle floating harmonic bob, foot stepping motion, natural blinking timer (150ms every 3.2s), rotational tracking.
+
+### C. PySide6 Desktop Integration Approach
+- **Core Principle**: SAME CAPTAIN AGENT + SAME CAPTAIN PET + NEW WINDOWS DESKTOP CONTAINER.
+- **Native Container (`ui/desktop/pet_window.py`)**:
+  - PySide6 frameless, transparent, always-on-top desktop overlay window (`Qt.WindowStaysOnTopHint | Qt.FramelessWindowHint | Qt.WA_TranslucentBackground`).
+  - Draggable across Windows desktop with persistent coordinate saving.
+  - System Tray integration with background state persistence.
+  - Security confirmation modal infrastructure.
+- **Pet WebGL Host (`ui/desktop/pet.html` & `ui/desktop/pet_view.js`)**:
+  - Embedded `QWebEngineView` with transparent background.
+  - Hosts the EXACT existing Three.js 3D EMO pet scene, geometries, materials, LED face expressions, and lip-sync mouth engine.
+  - Zero redesign, zero asset loss, 100% pixel-perfect preservation.
+- **State Machine Bridge (`app/state.py` ↔ Pet)**:
+  - `STANDBY` → Pet hidden (low power mode).
+  - `ACTIVE` → Pet visible (`happy`).
+  - `LISTENING` → Pet alert / perked ears (`cool` / attentive).
+  - `THINKING` → Monocle thinking eye (`thinking`).
+  - `OBSERVING` → Screen observation inspection posture.
+  - `EXECUTING` → Action / focused expression.
+  - `SPEAKING` → Real-time lip-sync mouth animation flap.
+  - `ERROR` → Alert expression (`angry`).
+

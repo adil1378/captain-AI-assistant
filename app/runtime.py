@@ -129,6 +129,91 @@ class AppRuntime:
         }
 
     # =========================================================================
+    # EXISTING CAPTAIN AGENT INTEGRATION (V2 GRAPH)
+    # =========================================================================
+    def _get_or_create_graph(self):
+        """Lazily initialize and cache the production V2 LangGraph state graph."""
+        if not hasattr(self, "_agent_graph") or self._agent_graph is None:
+            from src.agents.agent_registry import AgentRegistry
+            from src.agents.agent_lifecycle_manager import AgentLifecycleManager
+            from src.agents.conversation_agent import ConversationAgent
+            from src.agents.coding_agent import CodingAgent
+            from src.agents.system_agent import SystemAgent
+            from src.agents.rag_agent import RagAgent
+            from src.agents.search_agent import SearchAgent
+            from src.agents.comms_agent import CommsAgent
+            from src.graph.state_graph import create_captain_graph
+            from src.backend.core.event_bus import event_bus
+
+            registry = AgentRegistry()
+            # Register production agents safely
+            try:
+                loop = asyncio.get_running_loop()
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+
+            async def _register_all():
+                for agent in [
+                    ConversationAgent(),
+                    CodingAgent(),
+                    SystemAgent(),
+                    RagAgent(),
+                    SearchAgent(),
+                    CommsAgent(),
+                ]:
+                    await registry.register_agent(agent)
+
+            if loop.is_running():
+                # Inside an already running async loop: schedule creation
+                asyncio.create_task(_register_all())
+            else:
+                loop.run_until_complete(_register_all())
+
+            manager = AgentLifecycleManager(registry, event_bus)
+            self._agent_graph = create_captain_graph(registry, manager)
+            self._agent_registry = registry
+            self._agent_manager = manager
+
+        return self._agent_graph
+
+    async def execute_query(self, query: str, session_id: str = "desktop_session") -> str:
+        """
+        Execute user query through the EXISTING Captain AI Agent brain (V2 LangGraph).
+        Updates state machine: ACTIVE -> THINKING -> SPEAKING -> ACTIVE.
+        """
+        from langchain_core.messages import HumanMessage
+        from utils.text_utils import clean_think_tags
+
+        self.think(trigger="user_query")
+        try:
+            graph = self._get_or_create_graph()
+            config = {"configurable": {"thread_id": session_id}}
+            initial_state = {
+                "messages": [HumanMessage(content=query)],
+                "user_query": query
+            }
+
+            result = await graph.ainvoke(initial_state, config=config)
+            messages = result.get("messages", [])
+            reply_text = ""
+            if messages:
+                last_msg = messages[-1]
+                reply_text = last_msg.content if hasattr(last_msg, "content") else str(last_msg)
+
+            clean_text = clean_think_tags(reply_text)
+            self.speak(trigger="response_ready")
+            return clean_text
+        except Exception as e:
+            logger.error(f"AppRuntime.execute_query error: {e}")
+            self.error(f"agent_error: {e}")
+            return f"⚠️ Service Error: {e}"
+        finally:
+            # Return to active state
+            if self.current_state != AppState.ERROR:
+                self.wake(trigger="interaction_completed")
+
+    # =========================================================================
     # STATE TRANSITION HELPERS
     # =========================================================================
     def wake(self, trigger: str = "wake_trigger", metadata: Optional[Dict[str, Any]] = None) -> None:

@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Captain AI Desktop Pet</title>
+    <style>
+        html, body {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background: transparent !important;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #pet-container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: transparent !important;
+            position: relative;
+        }
+
+        #pet-canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            background: transparent !important;
+        }
+
+        /* Subtle interactive glow on hover */
+        #pet-container:hover {
+            cursor: grab;
+        }
+        #pet-container:active {
+            cursor: grabbing;
+        }
+    </style>
+    <!-- Existing Three.js r128 Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <div id="pet-container">
+        <canvas id="pet-canvas"></canvas>
+    </div>
+    <!-- Existing Captain 3D Robot Pet Engine Adapter -->
+    <script src="pet_view.js"></script>
+</body>
+</html>
