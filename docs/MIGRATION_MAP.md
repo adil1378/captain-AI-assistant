@@ -142,3 +142,14 @@ Each modification must strictly satisfy:
   - `SPEAKING` → Real-time lip-sync mouth animation flap.
   - `ERROR` → Alert expression (`angry`).
 
+
+- **System Tray Controls**:
+  - Show Captain / Hide Captain (toggle visibility independently of tray)
+  - Activate / Deactivate (triggers AppRuntime wake/sleep states)
+  - Settings / About (configuration modal dialogs)
+  - Exit (graceful application shutdown)
+- **Security Confirmation Infrastructure**:
+  - SecurityConfirmationDialog: High-risk operational authorization modal with high-contrast badge and action details.
+- **Offline Reliability & Performance**:
+  - Vendored local ui/desktop/three.min.js alongside pet.html to eliminate external CDN dependencies and ensure zero-latency local loading.
+  - High-DPI scaling attributes configured on QApplication for sharp rendering across high-resolution displays.

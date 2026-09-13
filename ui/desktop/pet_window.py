@@ -336,13 +336,13 @@ class CaptainDesktopWindow(QMainWindow if PYSIDE_AVAILABLE else object):
 
         menu.addSeparator()
 
-        activate_action = QAction("Activate (Wake)", self)
+        activate_action = QAction("Activate", self)
         activate_action.triggered.connect(lambda: self.runtime.wake("tray_menu"))
         menu.addAction(activate_action)
 
-        standby_action = QAction("Deactivate (Standby)", self)
-        standby_action.triggered.connect(lambda: self.runtime.sleep("tray_menu"))
-        menu.addAction(standby_action)
+        deactivate_action = QAction("Deactivate", self)
+        deactivate_action.triggered.connect(lambda: self.runtime.sleep("tray_menu"))
+        menu.addAction(deactivate_action)
 
         menu.addSeparator()
 
@@ -350,7 +350,7 @@ class CaptainDesktopWindow(QMainWindow if PYSIDE_AVAILABLE else object):
         settings_action.triggered.connect(self._show_settings_info)
         menu.addAction(settings_action)
 
-        about_action = QAction("About Captain AI OS", self)
+        about_action = QAction("About", self)
         about_action.triggered.connect(self._show_about_info)
         menu.addAction(about_action)
 
@@ -375,8 +375,9 @@ class CaptainDesktopWindow(QMainWindow if PYSIDE_AVAILABLE else object):
         """Update pet appearance in the Qt GUI thread."""
         logger.info(f"CaptainDesktopWindow: Updating pet visual state -> {state_str}")
         if state_str == AppState.STANDBY.value:
-            # Standby mode: pet can either hide or sleep
+            # Standby mode: pet hidden
             self.update_expression("sleeping")
+            self.hide_pet()
         elif state_str == AppState.ACTIVE.value:
             self.show_pet()
             self.update_expression("happy")
@@ -477,6 +478,19 @@ class CaptainDesktopWindow(QMainWindow if PYSIDE_AVAILABLE else object):
             self.move(event.globalPosition().toPoint() - self._drag_pos)
             event.accept()
 
+    def changeEvent(self, event) -> None:
+        """Handle window state change: minimize to tray."""
+        if PYSIDE_AVAILABLE and hasattr(event, "type") and event.type() == event.Type.WindowStateChange:
+            if self.isMinimized():
+                self.hide_pet()
+                event.ignore()
+                return
+        super().changeEvent(event)
+
+    async def ask_agent(self, query: str, session_id: str = "desktop_session") -> str:
+        """Forward user query to the existing Captain AI Agent brain via AppRuntime."""
+        return await self.runtime.execute_query(query, session_id=session_id)
+
     def shutdown_app(self) -> None:
         """Gracefully shutdown Captain AI OS and close overlay window."""
         logger.info("CaptainDesktopWindow: Shutting down desktop container...")
@@ -493,6 +507,12 @@ def launch_desktop_pet(runtime: Optional[AppRuntime] = None) -> int:
     if not PYSIDE_AVAILABLE:
         logger.error("PySide6 is not installed. Please install PySide6 to run the desktop companion.")
         return 1
+
+    # High DPI scaling attributes for crisp rendering across high-res displays
+    if hasattr(Qt.ApplicationAttribute, "AA_EnableHighDpiScaling"):
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_EnableHighDpiScaling, True)
+    if hasattr(Qt.ApplicationAttribute, "AA_UseHighDpiPixmaps"):
+        QApplication.setAttribute(Qt.ApplicationAttribute.AA_UseHighDpiPixmaps, True)
 
     app = QApplication.instance() or QApplication(sys.argv)
     window = CaptainDesktopWindow(runtime=runtime)

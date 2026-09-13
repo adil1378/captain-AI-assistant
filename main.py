@@ -155,10 +155,10 @@ async def _chat_async():
 
 @app.command()
 def desktop():
-    """Launch Voice-Reactive Animated Avatar Desktop Window."""
-    console.print("[bold green]Launching Captain Animated Voice Desktop App...[/bold green]")
-    from ui.desktop_gui import launch_desktop_gui
-    launch_desktop_gui()
+    """Launch Native PySide6 Desktop Container with Existing 3D EMO Robot Pet."""
+    console.print("[bold green]Launching Captain Native Desktop Pet App...[/bold green]")
+    from ui.desktop import launch_desktop_pet
+    launch_desktop_pet()
 
 
 @app.command()

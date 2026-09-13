@@ -123,9 +123,10 @@ def test_desktop_window_state_synchronization(qapp):
     runtime = AppRuntime(initial_state=AppState.STANDBY)
     window = CaptainDesktopWindow(runtime=runtime)
 
-    # 1. STANDBY
+    # 1. STANDBY -> Pet hidden
     runtime.state_manager.transition_to(AppState.STANDBY, force=True)
     qapp.processEvents()
+    assert window.isVisible() is False
 
     # 2. ACTIVE
     runtime.wake(trigger="wake_test")
@@ -200,3 +201,71 @@ def test_desktop_window_graceful_shutdown(qapp):
     assert window.tray_icon is not None
     window.shutdown_app()
     assert not window.isVisible()
+
+# =============================================================================
+# 7. TRAY MENU ACTIONS & CONTINUOUS LIFECYCLE
+# =============================================================================
+
+def test_tray_menu_actions_and_lifecycle(qapp):
+    """Verify all 7 required system tray actions are configured and functional."""
+    runtime = AppRuntime(initial_state=AppState.STANDBY)
+    window = CaptainDesktopWindow(runtime=runtime)
+
+    assert window.tray_icon is not None
+    menu = window.tray_icon.contextMenu()
+    assert menu is not None
+
+    action_texts = [action.text() for action in menu.actions() if action.text()]
+    required_actions = [
+        "Show Captain",
+        "Hide Captain",
+        "Activate",
+        "Deactivate",
+        "Settings",
+        "About",
+        "Exit"
+    ]
+
+    for req in required_actions:
+        assert req in action_texts, f"Required tray action '{req}' missing from menu"
+
+    # Tray remains visible when pet is hidden
+    window.hide_pet()
+    assert window.isVisible() is False
+    assert window.tray_icon.isVisible() is True
+
+    # Test Show Captain action
+    show_action = next(a for a in menu.actions() if a.text() == "Show Captain")
+    show_action.trigger()
+    qapp.processEvents()
+    assert window.isVisible() is True
+
+    # Test Hide Captain action
+    hide_action = next(a for a in menu.actions() if a.text() == "Hide Captain")
+    hide_action.trigger()
+    qapp.processEvents()
+    assert window.isVisible() is False
+
+    window.close()
+
+
+# =============================================================================
+# 8. AGENT BRAIN RUNTIME INTEGRATION
+# =============================================================================
+
+@pytest.mark.anyio
+async def test_agent_brain_runtime_integration(qapp):
+    """Verify Desktop Pet container communicates with the existing agent via AppRuntime."""
+    from unittest.mock import AsyncMock, patch
+
+    runtime = AppRuntime(initial_state=AppState.ACTIVE)
+    window = CaptainDesktopWindow(runtime=runtime)
+
+    with patch.object(runtime, "execute_query", new_callable=AsyncMock) as mock_exec:
+        mock_exec.return_value = "Captain standing by."
+
+        reply = await window.ask_agent("Status report")
+        mock_exec.assert_awaited_once_with("Status report", session_id="desktop_session")
+        assert reply == "Captain standing by."
+
+    window.close()
