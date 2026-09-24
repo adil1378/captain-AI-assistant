@@ -74,6 +74,8 @@ All authoritative project documentation is located strictly within `D:\captain\c
 | [`10_GITHUB_WORKFLOW.md`](file:///d:/captain/captain_docs/10_GITHUB_WORKFLOW.md) | Commit conventions, phase release requirements, and git standards. | Before staging, committing, or pushing code. |
 | [`11_CURRENT_STATE.md`](file:///d:/captain/captain_docs/11_CURRENT_STATE.md) | The active continuity file (Git baseline, test status, next action). | **Mandatory at the start of every turn.** |
 | [`12_CHANGELOG.md`](file:///d:/captain/captain_docs/12_CHANGELOG.md) | Project-level milestone and architectural evolution history. | To review past changes or record phase gates. |
+| [`PHASE_1_REPORT.md`](file:///d:/captain/captain_docs/PHASE_1_REPORT.md) | Formal Phase 1 Architecture Hardening & Baseline Completion Report. | To review Phase 1 audit & baseline findings. |
+| [`PHASE_2_REPORT.md`](file:///d:/captain/captain_docs/PHASE_2_REPORT.md) | Formal Phase 2 Desktop Presence & Companion Completion Report. | To review Phase 2 desktop & pet container specs. |
 
 ---
 
