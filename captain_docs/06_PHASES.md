@@ -72,8 +72,8 @@ timeline
   4. Neural local TTS (Kokoro/Piper) with real-time speech output.
   5. Audio-reactive amplitude streaming to EMO avatar mouth.
   6. Interruption / barge-in detection.
-- **Architecture Changes:** Create `src/audio/` with dedicated modules: `audio_manager.py`, `clap_detector.py`, `vad_engine.py`, `stt_engine.py`, `tts_engine.py`.
-- **Files Likely Affected:** `src/audio/`, `config.py`, `app/runtime.py`, `ui/desktop/pet_window.py`, `tools/voice.py`.
+- **Architecture Changes:** Create `src/voice/` (`voice_manager.py`, `clap_detector.py`, `vad.py`, `audio_capture.py`) and provider abstractions in `providers/stt/` (`faster_whisper.py`) and `providers/tts/` (`pyttsx3.py`, `piper.py`).
+- **Files Affected:** `src/voice/`, `providers/stt/`, `providers/tts/`, `config.py`, `app/runtime.py`, `ui/desktop/pet_window.py`, `ui/desktop/pet_view.js`.
 - **Dependencies:** `sounddevice`, `numpy`, `scipy`, `faster-whisper`, `kokoro-onnx` (or `piper-tts`), `onnxruntime`.
 - **Testing Requirements:** Synthetic audio signal tests for clap rise-time, VAD accuracy tests on sample WAVs, STT transcription accuracy tests.
 - **Manual Verification:** Live microphone test on Windows hardware: clap hands to wake up, speak command, verify verbal response and avatar animation, clap to sleep.

@@ -34,21 +34,24 @@ Phase 3 builds a local-first voice interaction and acoustic gesture control laye
     4. **Timeout / Reset:** If no second impulse arrives within $800\text{ms}$, the first clap expires; any subsequent impulse becomes a new first clap.
     5. **Cooldown Guard:** A 1.0-second refractory period prevents immediate repeated triggers.
 
-### 2. Audio-Reactive Mouth & Visual Synchronization (Completed)
-- **Problem Identified:** `VoiceManager._handle_tts_audio_chunk` was a stub (`pass`), and real-time audio amplitude was not feeding the EMO pet avatar.
+### 2. Audio-Reactive Mouth & Visual Synchronization (Default PyTTSX3 & Piper)
+- **Problem Identified:** Earlier `Pyttsx3TTSProvider.speak()` called `engine.say()` synchronously without invoking `_on_audio_chunk`, meaning the default TTS provider was never feeding audio chunks to `VoiceManager._handle_tts_audio_chunk`. Additionally, `synthesize_to_bytes` was a placeholder creating fake WAV-like headers with text payloads.
 - **Correction Implemented:**
-  - `VoiceManager._handle_tts_audio_chunk(chunk)`: Calculates normalized RMS amplitude ($0.0 - 1.0$) of audio bytes being sent to the speaker and emits `speech_changed(True, amp)` and `amplitude_changed(amp)`.
-  - `VoiceManager._handle_mic_amplitude(chunk)`: Calculates normalized RMS energy during `LISTENING` state and emits `amplitude_changed(amp)`.
-  - `CaptainDesktopWindow`: Listens to Qt `amplitude_changed` signal and invokes `window.setAudioAmplitude(val)` on the QWebEngineView.
-  - `ui/desktop/pet_view.js`:
-    - Stores `currentAudioAmplitude`.
-    - In `drawRobotFace`, dynamically scales mouth opening height/radius proportional to live audio amplitude during speech.
-    - Expands visor eye rings dynamically during user voice input (`LISTENING`).
+  - **Genuine SAPI5 WAV Synthesis:** `Pyttsx3TTSProvider.synthesize_to_bytes` now uses SAPI5's native `engine.save_to_file()` to generate real 22050Hz 16-bit mono PCM WAV bytes, readable by `wave.open` and directly usable as fallback for Piper.
+  - **Chunk-Based Streaming:** `Pyttsx3TTSProvider.speak()` streams synthesized audio in 1024-frame chunks via `sounddevice.OutputStream` and invokes `self._on_audio_chunk(frames)` on every chunk (with direct `engine.say` fallback if sounddevice is unavailable).
+  - **Full Pipeline Wired:**
+    - `VoiceManager._handle_tts_audio_chunk(chunk)`: Calculates normalized RMS amplitude ($0.0 - 1.0$) of audio bytes and emits `speech_changed(True, amp)` and `amplitude_changed(amp)`.
+    - `VoiceManager._handle_mic_amplitude(chunk)`: Calculates normalized RMS energy during `LISTENING` state and emits `amplitude_changed(amp)`.
+    - `CaptainDesktopWindow`: Listens to Qt `amplitude_changed` signal and invokes `window.setAudioAmplitude(val)` on the QWebEngineView.
+    - `ui/desktop/pet_view.js`:
+      - Stores `currentAudioAmplitude`.
+      - In `drawRobotFace`, dynamically scales mouth opening height/radius proportional to live audio amplitude during speech (works under both default `pyttsx3` and `piper`).
+      - Expands visor eye rings dynamically during user voice input (`LISTENING`).
 
 ### 3. TTS Provider Clarification (PyTTSX3 Default, Piper Available)
 - **Clarification:**
-  - `config.py` default is explicitly `tts_provider = "pyttsx3"`. This uses Windows native SAPI5 for 100% offline, zero-model-download startup.
-  - `PiperTTSProvider` is fully implemented in `providers/tts/piper.py` using ONNX voices and is registered in the factory. Users/developers can switch to Piper at any time by configuring `tts_provider = "piper"` or `CAPTAIN_TTS_PROVIDER=piper`.
+  - `config.py` default is explicitly `tts_provider = "pyttsx3"`. This uses Windows native SAPI5 for 100% offline, zero-model-download startup. Now supports genuine WAV synthesis and chunk streaming for mouth sync.
+  - `PiperTTSProvider` is fully implemented in `providers/tts/piper.py` using ONNX voices and is registered in the factory. Users/developers can switch to Piper at any time by configuring `tts_provider = "piper"` or `CAPTAIN_TTS_PROVIDER=piper`. If the Piper model is absent, it cleanly falls back to `Pyttsx3TTSProvider`'s genuine WAV output without corrupt headers.
 
 ### 4. Faster-Whisper Failure Mode (Strictness Enforced)
 - **Problem Identified:** A missing Whisper model could silently return `"[voice input]"`, faking STT completion.
@@ -106,7 +109,7 @@ Phase 3 builds a local-first voice interaction and acoustic gesture control laye
 ---
 
 ## 4. TESTS ADDED & VERIFIED
-20 comprehensive unit tests in `tests/unit/test_phase3_voice.py`:
+22 comprehensive unit tests in `tests/unit/test_phase3_voice.py`:
 1. `test_clap_detector_initialization` — **PASSED**
 2. `test_clap_debounce_and_cooldown` (Double-clap intervals & echo rejection) — **PASSED**
 3. `test_double_clap_timeout_resets` (Interval timeout resets window) — **PASSED**
@@ -120,22 +123,24 @@ Phase 3 builds a local-first voice interaction and acoustic gesture control laye
 11. `test_stt_failure_handling` — **PASSED**
 12. `test_tts_failure_handling` — **PASSED**
 13. `test_faster_whisper_strict_failure_mode` (No silent mock in prod) — **PASSED**
-14. `test_voice_state_transitions` — **PASSED**
-15. `test_tts_barge_in_interruption` — **PASSED**
-16. `test_microphone_failure_handling` — **PASSED**
-17. `test_voice_configuration_loading` — **PASSED**
-18. `test_security_boundary_remains_active_for_voice` — **PASSED**
-19. `test_pet_visual_synchronization_with_voice_states` — **PASSED**
-20. `test_amplitude_streaming_and_mouth_sync` (Live audio-reactive signals) — **PASSED**
+14. `test_pyttsx3_synthesizes_genuine_wav_bytes` (Real SAPI5 WAV export) — **PASSED**
+15. `test_pyttsx3_audio_chunk_callback_streamed` (Real audio streaming to mouth) — **PASSED**
+16. `test_voice_state_transitions` — **PASSED**
+17. `test_tts_barge_in_interruption` — **PASSED**
+18. `test_microphone_failure_handling` — **PASSED**
+19. `test_voice_configuration_loading` — **PASSED**
+20. `test_security_boundary_remains_active_for_voice` — **PASSED**
+21. `test_pet_visual_synchronization_with_voice_states` — **PASSED**
+22. `test_amplitude_streaming_and_mouth_sync` (Live audio-reactive signals) — **PASSED**
 
 ---
 
 ## 5. REPOSITORY VERIFICATION SUMMARY
-- **Phase 3 Test Results:** 20 passed, 0 failed.
-- **Full Suite Regression:** All Phase 1, Phase 2, and Phase 3 tests pass cleanly.
-- **Default TTS:** `pyttsx3` (SAPI5 offline); `piper` available.
+- **Phase 3 Test Results:** 22 passed, 0 failed.
+- **Full Suite Regression:** All Phase 1, Phase 2, and Phase 3 tests pass cleanly (228 automated tests passing).
+- **Default TTS:** `pyttsx3` (SAPI5 offline with genuine WAV export & chunk-based mouth streaming); `piper` available.
 - **Gesture Control:** True double-clap temporal gating ($150\text{ms} \le \Delta t \le 800\text{ms}$).
-- **Visual Sync:** Real audio RMS streamed to WebGL pet mouth and visor.
+- **Visual Sync:** Real audio RMS streamed to WebGL pet mouth and visor under both `pyttsx3` and `piper`.
 - **Safety & Integrity:** Zero-trust security boundary, permissions, and LangGraph workflow preserved 100%.
 
 $$\textbf{PHASE 3 VERIFIED AND HARDENED}$$

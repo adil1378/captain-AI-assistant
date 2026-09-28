@@ -521,3 +521,41 @@ async def test_faster_whisper_strict_failure_mode():
     assert "not loaded" in str(exc_info.value)
 
 
+# =============================================================================
+# 20. PyTTSX3 Genuine SAPI5 WAV Synthesis
+# =============================================================================
+@pytest.mark.anyio
+async def test_pyttsx3_synthesizes_genuine_wav_bytes():
+    import wave
+    import io
+    from providers.tts.pyttsx3 import Pyttsx3TTSProvider
+
+    provider = Pyttsx3TTSProvider()
+    wav_bytes = await provider.synthesize_to_bytes("Testing genuine WAV format")
+    assert len(wav_bytes) > 44  # Exceeds standard 44-byte WAV header
+
+    # Verify that python's native wave module can parse the header and frames
+    with wave.open(io.BytesIO(wav_bytes), "rb") as wf:
+        assert wf.getnchannels() in (1, 2)
+        assert wf.getframerate() > 0
+        assert wf.getnframes() > 0
+
+
+# =============================================================================
+# 21. PyTTSX3 Audio Chunk Streaming for Avatar Mouth Sync
+# =============================================================================
+@pytest.mark.anyio
+async def test_pyttsx3_audio_chunk_callback_streamed():
+    from providers.tts.pyttsx3 import Pyttsx3TTSProvider
+
+    provider = Pyttsx3TTSProvider()
+    received_chunks = []
+    provider.set_audio_chunk_callback(lambda chunk: received_chunks.append(chunk))
+
+    await provider.speak("Captain vocal synthesis")
+    # Verify chunks were streamed to callback
+    assert len(received_chunks) > 0
+    assert len(received_chunks[0]) > 0
+
+
+

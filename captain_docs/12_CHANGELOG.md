@@ -46,7 +46,7 @@
   - `captain_docs/11_CURRENT_STATE.md`
   - `captain_docs/12_CHANGELOG.md`
 - **Tests:** 206 automated unit & integration tests passing (`pytest -q`).
-- **Commit:** Pending Phase 1 commit (`feat(phase-1): harden architecture and establish baseline`).
+- **Commit:** `574f279` (`feat(phase-1): harden architecture and establish baseline`).
 - **Status:** `COMPLETE`
 
 ---
