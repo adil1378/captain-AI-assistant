@@ -108,8 +108,55 @@ Phase 3 builds a local-first voice interaction and acoustic gesture control laye
 
 ---
 
+### 7. Unified 16kHz Audio Architecture & Resampling Boundary
+- **Problem Identified:** `config.py` previously declared `clap_sample_rate = 44100`, which was passed to `AudioCapture`. However, `SileroVADDetector` and `FasterWhisperSTTProvider` are 16kHz engines, creating an acoustic pitch/timing distortion in real audio capture.
+- **Correction Implemented:**
+  - Standardized the unified pipeline to **16,000 Hz (16kHz mono float32)** across `AudioCapture`, `ClapDetector`, `SileroVADDetector`, and `FasterWhisperSTTProvider`.
+  - Added zero-dependency deterministic `resample_audio(audio, orig_sr, target_sr=16000)` using linear interpolation.
+  - Added automatic resampling boundary inside `AudioCapture`: if the microphone device only runs at a non-16k native rate (e.g. 44.1kHz or 48kHz), incoming chunks are resampled to 16,000 Hz before passing to callbacks or queues.
+  - `VoiceManager.process_audio_frame(frame, sample_rate)` explicitly resamples any non-16k frames.
+
+### 8. VAD Configuration Flag Enforcement
+- **Problem Identified:** `settings.vad_enabled` was defined in configuration, but `VoiceManager` unconditionally invoked VAD and triggered state transitions.
+- **Correction Implemented:**
+  - `SileroVADDetector` now checks `self.is_enabled`; if disabled, `process_chunk()` unconditionally returns `VADState.SILENCE`.
+  - `VoiceManager` enforces `self.vad_enabled and settings.vad_enabled`; when disabled, speech VAD transitions and barge-in are completely bypassed, honoring the configuration contract.
+
+---
+
+## 3. ARCHITECTURE SUMMARY
+
+```text
+                     ┌───────────────────────────────────┐
+                     │   Desktop Pet Window (PySide6)    │
+                     │  - Frameless Transparent WebGL    │
+                     │  - Dynamic Mouth / Visor Sync     │
+                     └─────────────────┬─────────────────┘
+                                       │ Qt Signals
+                                       ▼
+                     ┌───────────────────────────────────┐
+                     │           VoiceManager            │
+                     │  - AudioCapture (16kHz Mono)      │
+                     │  - resample_audio() Boundary      │
+                     │  - ClapDetector (Double-Clap)     │
+                     │  - SileroVAD (Voice Activity)     │
+                     │  - Background Async Loop Thread   │
+                     └─────────┬───────────────▲─────────┘
+          Transcribed Speech   │               │ Synthesized TTS
+                               ▼               │ Audio Stream
+                     ┌─────────────────────────┴─────────┐
+                     │            AppRuntime             │
+                     │  - StateManager (8 States)        │
+                     │  - LangGraph Brain Orchestrator   │
+                     │  - ZeroTrust Security Boundary    │
+                     │  - Session & ChromaDB Memory      │
+                     └───────────────────────────────────┘
+```
+
+---
+
 ## 4. TESTS ADDED & VERIFIED
-22 comprehensive unit tests in `tests/unit/test_phase3_voice.py`:
+25 comprehensive unit tests in `tests/unit/test_phase3_voice.py`:
 1. `test_clap_detector_initialization` — **PASSED**
 2. `test_clap_debounce_and_cooldown` (Double-clap intervals & echo rejection) — **PASSED**
 3. `test_double_clap_timeout_resets` (Interval timeout resets window) — **PASSED**
@@ -132,12 +179,16 @@ Phase 3 builds a local-first voice interaction and acoustic gesture control laye
 20. `test_security_boundary_remains_active_for_voice` — **PASSED**
 21. `test_pet_visual_synchronization_with_voice_states` — **PASSED**
 22. `test_amplitude_streaming_and_mouth_sync` (Live audio-reactive signals) — **PASSED**
+23. `test_audio_sample_rate_resampling` (44.1k/48k -> 16k conversion) — **PASSED**
+24. `test_vad_enabled_flag_enforced` (VAD toggle contract) — **PASSED**
+25. `test_unified_16k_sample_rate_defaults` (16kHz configuration) — **PASSED**
 
 ---
 
 ## 5. REPOSITORY VERIFICATION SUMMARY
-- **Phase 3 Test Results:** 22 passed, 0 failed.
-- **Full Suite Regression:** All Phase 1, Phase 2, and Phase 3 tests pass cleanly (228 automated tests passing).
+- **Phase 3 Test Results:** 25 passed, 0 failed.
+- **Full Suite Regression:** All Phase 1, Phase 2, and Phase 3 tests pass cleanly (231 automated tests passing).
+- **Audio Pipeline Standard:** Unified 16kHz mono float32 with automatic resampling.
 - **Default TTS:** `pyttsx3` (SAPI5 offline with genuine WAV export & chunk-based mouth streaming); `piper` available.
 - **Gesture Control:** True double-clap temporal gating ($150\text{ms} \le \Delta t \le 800\text{ms}$).
 - **Visual Sync:** Real audio RMS streamed to WebGL pet mouth and visor under both `pyttsx3` and `piper`.

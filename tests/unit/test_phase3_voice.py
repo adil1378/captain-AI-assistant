@@ -558,4 +558,72 @@ async def test_pyttsx3_audio_chunk_callback_streamed():
     assert len(received_chunks[0]) > 0
 
 
+# =============================================================================
+# 22. Audio Sample-Rate Resampling (44.1kHz / 48kHz -> 16kHz Mono)
+# =============================================================================
+def test_audio_sample_rate_resampling():
+    from src.voice.audio_capture import resample_audio
+
+    # Generate 1.0s sine wave at 44.1kHz
+    t_44k = np.linspace(0, 1.0, 44100, endpoint=False)
+    sig_44k = (0.5 * np.sin(2 * np.pi * 440 * t_44k)).astype(np.float32)
+
+    # Resample to 16kHz
+    sig_16k = resample_audio(sig_44k, orig_sr=44100, target_sr=16000)
+
+    # Verify target length exactly matches expected duration (1.0s * 16000 = 16000 samples)
+    assert len(sig_16k) == 16000
+
+    # Verify signal content / energy preserved
+    rms_44k = float(np.sqrt(np.mean(sig_44k ** 2)))
+    rms_16k = float(np.sqrt(np.mean(sig_16k ** 2)))
+    assert np.isclose(rms_44k, rms_16k, atol=0.01)
+
+    # Resampling identical rate returns original array without overhead
+    same_sig = resample_audio(sig_16k, orig_sr=16000, target_sr=16000)
+    assert len(same_sig) == len(sig_16k)
+
+
+# =============================================================================
+# 23. VAD Enabled Configuration Flag Enforcement
+# =============================================================================
+def test_vad_enabled_flag_enforced(mock_runtime):
+    from src.voice.vad import SileroVADDetector, VADState
+
+    # 1. SileroVADDetector honors is_enabled flag
+    detector = SileroVADDetector(enabled=False)
+    assert detector.is_enabled is False
+    speech_frame = _generate_synthetic_speech_chunk()
+    # When disabled, process_chunk must unconditionally return SILENCE
+    assert detector.process_chunk(speech_frame) == VADState.SILENCE
+
+    # 2. VoiceManager honors vad_enabled=False
+    mock_runtime.state_manager.reset(AppState.ACTIVE)
+    manager = VoiceManager(runtime=mock_runtime, vad_detector=detector, vad_enabled=False)
+    assert manager.vad_enabled is False
+
+    # Frame processing when VAD is disabled must NOT transition state to LISTENING
+    manager.process_audio_frame(speech_frame)
+    assert mock_runtime.current_state == AppState.ACTIVE
+
+    # Enabling VAD allows transition
+    manager.set_vad_enabled(True)
+    assert manager.vad_enabled is True
+    # Provide synthetic VAD that detects speech
+    mock_vad = MagicMock(spec=SileroVADDetector)
+    mock_vad.process_chunk.return_value = VADState.SPEECH_START
+    manager.vad_detector = mock_vad
+    manager.process_audio_frame(speech_frame)
+    assert mock_runtime.current_state == AppState.LISTENING
+
+
+# =============================================================================
+# 24. Unified 16kHz Standard Configuration
+# =============================================================================
+def test_unified_16k_sample_rate_defaults():
+    assert settings.voice_sample_rate == 16000
+    assert settings.clap_sample_rate == 16000
+
+
+
 

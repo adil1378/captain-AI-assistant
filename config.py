@@ -59,6 +59,7 @@ class Settings(BaseSettings):
     # 2.1 VOICE, CLAP & VAD SETTINGS (PHASE 3)
     # =========================================================================
     voice_enabled: bool = Field(default=True, description="Enable audio microphone capture and voice loop")
+    voice_sample_rate: int = Field(default=16000, description="Standard unified audio sample rate in Hz (16kHz)")
     microphone_device: Optional[int] = Field(default=None, description="Index of default audio input device (None = system default)")
     vad_enabled: bool = Field(default=True, description="Enable local Silero Voice Activity Detection")
     vad_sensitivity: float = Field(default=0.5, description="VAD confidence threshold for speech (0.0 - 1.0)")
@@ -67,8 +68,8 @@ class Settings(BaseSettings):
     clap_cooldown: float = Field(default=1.0, description="Cooldown interval in seconds between valid clap triggers")
     clap_min_interval_ms: int = Field(default=150, description="Minimum milliseconds between two valid claps")
     clap_max_interval_ms: int = Field(default=800, description="Maximum milliseconds window to register double clap")
-    clap_sample_rate: int = Field(default=44100, description="Audio input sampling rate in Hz")
-    clap_chunk_size: int = Field(default=1024, description="Audio stream buffer frame chunk size")
+    clap_sample_rate: int = Field(default=16000, description="Audio input sampling rate in Hz (unified 16kHz standard)")
+    clap_chunk_size: int = Field(default=512, description="Audio stream buffer frame chunk size")
 
     # =========================================================================
     # 3. OLLAMA & LOCAL MODEL SETTINGS

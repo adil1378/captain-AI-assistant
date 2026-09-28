@@ -26,7 +26,7 @@ from providers.tts.base import BaseTTSProvider
 from providers.tts.factory import get_tts_provider
 from src.voice.clap_detector import ClapDetector
 from src.voice.vad import SileroVADDetector, VADState
-from src.voice.audio_capture import AudioCapture
+from src.voice.audio_capture import AudioCapture, resample_audio
 
 
 class VoiceManager:
@@ -44,6 +44,7 @@ class VoiceManager:
         clap_detector: Optional[ClapDetector] = None,
         vad_detector: Optional[SileroVADDetector] = None,
         desktop_window: Optional[Any] = None,
+        vad_enabled: Optional[bool] = None,
     ):
         self.runtime = runtime or global_runtime
         self.state_manager: StateManager = self.runtime.state_manager
@@ -53,11 +54,14 @@ class VoiceManager:
         self.tts_provider: BaseTTSProvider = tts_provider or get_tts_provider()
         self.clap_detector: ClapDetector = clap_detector or ClapDetector()
         self.vad_detector: SileroVADDetector = vad_detector or SileroVADDetector()
+        self.vad_enabled: bool = vad_enabled if vad_enabled is not None else getattr(settings, "vad_enabled", True)
 
-        # Audio capture engine
+        # Audio capture engine strictly standardized to 16kHz mono PCM
+        sample_rate = getattr(settings, "voice_sample_rate", 16000)
         self.audio_capture = AudioCapture(
-            sample_rate=settings.clap_sample_rate,
+            sample_rate=sample_rate,
             chunk_size=512,
+            target_sample_rate=16000,
             on_amplitude=self._handle_mic_amplitude,
         )
 
@@ -168,13 +172,24 @@ class VoiceManager:
         logger.info("VoiceManager: Stopped.")
 
 
-    def process_audio_frame(self, frame: np.ndarray) -> None:
+    def set_vad_enabled(self, enabled: bool) -> None:
+        """Enable or disable voice activity detection at runtime."""
+        self.vad_enabled = enabled
+        if hasattr(self.vad_detector, "set_enabled"):
+            self.vad_detector.set_enabled(enabled)
+
+    def process_audio_frame(self, frame: np.ndarray, sample_rate: int = 16000) -> None:
         """
         Process a single audio frame synchronously.
+        Enforces standard 16kHz mono float32 pipeline by resampling if required.
         Used both in production background worker and in automated unit tests.
         """
         if frame is None or len(frame) == 0:
             return
+
+        # Resample to 16kHz if frame arrives at a different sampling rate (e.g. 44.1k/48k)
+        if sample_rate != 16000:
+            frame = resample_audio(frame, orig_sr=sample_rate, target_sr=16000)
 
         current_state = self.state_manager.current_state
 
@@ -192,6 +207,10 @@ class VoiceManager:
         # =====================================================================
         if current_state == AppState.STANDBY:
             # Standby mode: only clap detection is active; discard speech buffers
+            return
+
+        # Enforce VAD enabled configuration contract
+        if not (self.vad_enabled and getattr(settings, "vad_enabled", True)):
             return
 
         # Handle Barge-in / Interruption while Captain is SPEAKING

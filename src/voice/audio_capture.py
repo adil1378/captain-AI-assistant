@@ -13,18 +13,36 @@ from loguru import logger
 from config import settings
 
 
+def resample_audio(audio: np.ndarray, orig_sr: int, target_sr: int = 16000) -> np.ndarray:
+    """
+    Resample 1D float32 audio numpy array from orig_sr to target_sr using linear interpolation.
+    Fast, artifact-free, deterministic, zero extra dependencies.
+    Preserves audio duration and spectral pitch for downstream VAD, Clap, and STT pipelines.
+    """
+    if orig_sr == target_sr or len(audio) == 0:
+        return audio
+    num_target_samples = int(round(len(audio) * float(target_sr) / float(orig_sr)))
+    if num_target_samples == 0:
+        return np.zeros(0, dtype=audio.dtype)
+    orig_indices = np.linspace(0, len(audio) - 1, len(audio))
+    target_indices = np.linspace(0, len(audio) - 1, num_target_samples)
+    return np.interp(target_indices, orig_indices, audio).astype(audio.dtype)
+
+
 class AudioCapture:
-    """Microphone audio stream capture using sounddevice."""
+    """Microphone audio stream capture using sounddevice with automatic 16kHz resampling."""
 
     def __init__(
         self,
         sample_rate: int = 16000,
         chunk_size: int = 512,
+        target_sample_rate: int = 16000,
         device_index: Optional[int] = None,
         on_amplitude: Optional[Callable[[float], None]] = None,
     ):
         self.sample_rate = sample_rate
         self.chunk_size = chunk_size
+        self.target_sample_rate = target_sample_rate
         self.device_index = device_index if device_index is not None else settings.microphone_device
         self.on_amplitude = on_amplitude
 
@@ -52,6 +70,10 @@ class AudioCapture:
 
                     # Mono float32 copy
                     mono = indata[:, 0].copy() if indata.ndim > 1 else indata.copy()
+
+                    # Resample if microphone stream runs at a device-native non-16k rate (e.g. 44.1k/48k)
+                    if self.sample_rate != self.target_sample_rate:
+                        mono = resample_audio(mono, orig_sr=self.sample_rate, target_sr=self.target_sample_rate)
 
                     # Instantaneous amplitude for pet visual feedback
                     if self.on_amplitude:

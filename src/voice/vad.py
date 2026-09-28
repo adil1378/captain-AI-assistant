@@ -33,16 +33,27 @@ class SileroVADDetector:
         sensitivity: Optional[float] = None,
         sample_rate: int = 16000,
         silence_hangover_sec: float = 0.6,
+        enabled: Optional[bool] = None,
     ):
         self.sensitivity = sensitivity if sensitivity is not None else settings.vad_sensitivity
         self.sample_rate = sample_rate
         self.silence_hangover_sec = silence_hangover_sec
+        self._enabled = enabled if enabled is not None else getattr(settings, "vad_enabled", True)
 
         self._model = None
         self._in_speech = False
         self._last_speech_time = 0.0
         self._initialized = False
         self._load_model()
+
+    @property
+    def is_enabled(self) -> bool:
+        return self._enabled
+
+    def set_enabled(self, enabled: bool) -> None:
+        self._enabled = enabled
+        if not enabled:
+            self.reset()
 
     def _load_model(self) -> None:
         """Attempt to load local Silero VAD model."""
@@ -100,6 +111,9 @@ class SileroVADDetector:
         Evaluate frame and return VAD state transition:
         SILENCE, SPEECH_START, SPEECH_CONTINUE, or SPEECH_END.
         """
+        if not self._enabled:
+            return VADState.SILENCE
+
         prob = self.get_speech_confidence(audio_chunk)
         is_speech = prob >= self.sensitivity
         now = time.time()

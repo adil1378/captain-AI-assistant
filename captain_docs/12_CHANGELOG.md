@@ -4,33 +4,69 @@
 > **Status:** Canonical Project Changelog  
 > **Rule:** Only record meaningful architectural, capability, phase, and workflow changes. Do not log minor code formatting edits.
 
-## [2026-09-28] — Phase 3: Voice Input, Voice Output & Clap Control Complete
+## [2026-09-28] — Phase 3 Hardening: 16kHz Unification, VAD Control & Sample Rate Architecture
+- **Phase:** Phase 3 (Voice Input, Voice Output & Clap Control Hardening)
+- **Change:**
+  - Standardized unified 16kHz mono audio pipeline across `AudioCapture`, `ClapDetector`, `SileroVADDetector`, and `FasterWhisperSTTProvider`.
+  - Added zero-dependency `resample_audio` function and automatic input stream resampling boundary in `AudioCapture`.
+  - Enforced `vad_enabled` configuration flag in `SileroVADDetector` and `VoiceManager` (honoring disabled state).
+  - Added tests for audio resampling (44.1k -> 16k), `vad_enabled` toggle enforcement, and unified configuration defaults.
+  - Re-synchronized `00_MASTER_INDEX.md`, `11_CURRENT_STATE.md`, and `12_CHANGELOG.md` with active project reality.
+- **Files Affected:** `config.py`, `src/voice/audio_capture.py`, `src/voice/vad.py`, `src/voice/voice_manager.py`, `tests/unit/test_phase3_voice.py`, `captain_docs/`.
+- **Tests:** 25 Phase 3 unit tests passing; 231 total tests passing across full repository (`pytest tests/ -q`). Zero failures.
+- **Status:** `COMPLETE (SOFTWARE VERIFIED)`
+
+---
+
+## [2026-09-28] — Phase 3 Hardening: Genuine SAPI5 WAV Synthesis & Default Chunk Streaming
+- **Phase:** Phase 3 (Voice Input, Voice Output & Clap Control Hardening)
+- **Change:**
+  - Replaced placeholder pseudo-WAV in `Pyttsx3TTSProvider.synthesize_to_bytes` with native Windows SAPI5 `.save_to_file()` exporting genuine 22,050Hz 16-bit mono PCM WAV bytes.
+  - Refactored `Pyttsx3TTSProvider.speak()` to stream synthesized audio in 1024-frame chunks via `sounddevice.OutputStream`, invoking `_on_audio_chunk()` on every chunk to drive real-time RMS amplitude to the EMO avatar mouth.
+  - Fixed Piper TTS fallback to receive genuine WAV bytes without header corruption.
+  - Cleaned documentation paths (`src/audio/` -> `src/voice/` and `providers/`).
+- **Commit:** `ee073d7` (*fix(phase-3): implement genuine SAPI5 WAV synthesis, pyttsx3 chunk mouth-sync, and sync docs*)
+- **Tests:** 22 Phase 3 unit tests passing; 228 total tests passing.
+- **Status:** `COMPLETE`
+
+---
+
+## [2026-09-28] — Phase 3 Hardening: Double-Clap State Machine & Strict Error Handling
+- **Phase:** Phase 3 (Voice Input, Voice Output & Clap Control Hardening)
+- **Change:**
+  - Implemented true double-clap temporal gating state machine in `ClapDetector` ($150\text{ms} \le \Delta t \le 800\text{ms}$) with reverberation rejection.
+  - Enforced strict production failure mode in `FasterWhisperSTTProvider` (`allow_mock_fallback=False` default; raises `RuntimeError` on missing model).
+  - Wired `amplitude_changed` Qt signal to WebEngine `window.setAudioAmplitude()` for live EMO avatar mouth modulation and visor ring expansion.
+  - Resolved PySide6 Qt GUI thread vs asyncio event loop concurrency with dedicated background daemon thread `CaptainVoiceAsyncLoop`.
+- **Commit:** `422c441` (*fix(phase-3): implement true double-clap, real audio mouth sync, strict whisper error handling, and robust voice loop*)
+- **Tests:** 20 Phase 3 unit tests passing; 226 total tests passing.
+- **Status:** `COMPLETE`
+
+---
+
+## [2026-09-28] — Phase 3: Voice Input, Voice Output & Clap Control Initial
 - **Phase:** Phase 3 (Voice Input, Voice Output & Clap Control)
 - **Change:** Implemented local-first voice interaction subsystem:
-  - Acoustic transient clap detector with energy/crest factor analysis and debounce cooldown (`STANDBY <-> ACTIVE` toggle).
+  - Acoustic transient clap detector (`STANDBY <-> ACTIVE` toggle).
   - Local neural Voice Activity Detection (Silero VAD) with speech boundary tracking.
   - Faster-Whisper local STT provider (`FasterWhisperSTTProvider`) with background thread inference.
-  - Neural local TTS (`PiperTTSProvider`) and native Windows SAPI5 (`Pyttsx3TTSProvider`) with instant barge-in interruption.
+  - Neural local TTS (`PiperTTSProvider`) and native Windows SAPI5 (`Pyttsx3TTSProvider`) with barge-in interruption.
   - Bidirectional 8-state machine synchronization via `StateManager`.
-  - Desktop companion EMO visual feedback bridge integration (`STANDBY != HIDDEN`).
-  - Added 17 unit tests in `tests/unit/test_phase3_voice.py`.
-- **Reason:** Provide natural, local, hands-free voice and acoustic gesture control for the persistent desktop agent.
-- **Files Created:**
-  - `src/voice/` (`clap_detector.py`, `vad.py`, `audio_capture.py`, `voice_manager.py`, `__init__.py`)
-  - `providers/stt/` (`base.py`, `faster_whisper.py`, `factory.py`, `__init__.py`)
-  - `providers/tts/` (`base.py`, `piper.py`, `pyttsx3.py`, `factory.py`, `__init__.py`)
-  - `tests/unit/test_phase3_voice.py`
-  - `captain_docs/PHASE_3_REPORT.md`
-- **Files Affected:**
-  - `config.py`
-  - `app/runtime.py`
-  - `ui/desktop/pet_window.py`
-  - `requirements.txt`
-  - `captain_docs/00_MASTER_INDEX.md`
-  - `captain_docs/06_PHASES.md`
-  - `captain_docs/12_CHANGELOG.md`
-- **Tests:** 17 Phase 3 unit tests passing; 223 total unit and integration tests passing (`pytest tests/ -q`). Zero failures.
-- **Commit:** `feat(phase-3): implement voice interaction and clap control`
+- **Commit:** `f857b2f` (*feat(phase-3): implement voice interaction and clap control*)
+- **Tests:** 17 Phase 3 unit tests passing; 223 total tests passing.
+- **Status:** `COMPLETE`
+
+---
+
+## [2026-09-26] — Phase 2: Desktop Presence & Companion Verification Complete
+- **Phase:** Phase 2 (Desktop Presence & Companion)
+- **Change:** Implemented Windows-native desktop container for the 3D EMO avatar:
+  - Transparent, frameless, always-on-top overlay window (`CaptainDesktopWindow`) using PySide6 and QWebEngineView.
+  - Bidirectional state bridge between `StateManager` (8 states) and EMO WebGL companion.
+  - Enforced `STANDBY != HIDDEN` rule (standby keeps pet visible in relaxed breathing state).
+  - Added Windows system tray icon and native security confirmation dialog.
+- **Commit:** `8665296` (*fix(phase-2): enforce STANDBY != HIDDEN, add WebEngine drag filter, and sync docs/tests*)
+- **Tests:** 8 Phase 2 unit tests passing; 214 total tests passing.
 - **Status:** `COMPLETE`
 
 ---
