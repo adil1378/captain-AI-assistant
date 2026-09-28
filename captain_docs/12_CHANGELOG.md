@@ -4,6 +4,35 @@
 > **Status:** Canonical Project Changelog  
 > **Rule:** Only record meaningful architectural, capability, phase, and workflow changes. Do not log minor code formatting edits.
 
+## [2026-09-28] — Phase 3: Voice Input, Voice Output & Clap Control Complete
+- **Phase:** Phase 3 (Voice Input, Voice Output & Clap Control)
+- **Change:** Implemented local-first voice interaction subsystem:
+  - Acoustic transient clap detector with energy/crest factor analysis and debounce cooldown (`STANDBY <-> ACTIVE` toggle).
+  - Local neural Voice Activity Detection (Silero VAD) with speech boundary tracking.
+  - Faster-Whisper local STT provider (`FasterWhisperSTTProvider`) with background thread inference.
+  - Neural local TTS (`PiperTTSProvider`) and native Windows SAPI5 (`Pyttsx3TTSProvider`) with instant barge-in interruption.
+  - Bidirectional 8-state machine synchronization via `StateManager`.
+  - Desktop companion EMO visual feedback bridge integration (`STANDBY != HIDDEN`).
+  - Added 17 unit tests in `tests/unit/test_phase3_voice.py`.
+- **Reason:** Provide natural, local, hands-free voice and acoustic gesture control for the persistent desktop agent.
+- **Files Created:**
+  - `src/voice/` (`clap_detector.py`, `vad.py`, `audio_capture.py`, `voice_manager.py`, `__init__.py`)
+  - `providers/stt/` (`base.py`, `faster_whisper.py`, `factory.py`, `__init__.py`)
+  - `providers/tts/` (`base.py`, `piper.py`, `pyttsx3.py`, `factory.py`, `__init__.py`)
+  - `tests/unit/test_phase3_voice.py`
+  - `captain_docs/PHASE_3_REPORT.md`
+- **Files Affected:**
+  - `config.py`
+  - `app/runtime.py`
+  - `ui/desktop/pet_window.py`
+  - `requirements.txt`
+  - `captain_docs/00_MASTER_INDEX.md`
+  - `captain_docs/06_PHASES.md`
+  - `captain_docs/12_CHANGELOG.md`
+- **Tests:** 17 Phase 3 unit tests passing; 223 total unit and integration tests passing (`pytest tests/ -q`). Zero failures.
+- **Commit:** `feat(phase-3): implement voice interaction and clap control`
+- **Status:** `COMPLETE`
+
 ---
 
 ## [2026-09-23] — Phase 1: Architecture Hardening & Baseline Complete

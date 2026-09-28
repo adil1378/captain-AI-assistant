@@ -86,13 +86,27 @@ class AppRuntime:
         # 1. Guarantee standard storage directories exist
         settings.ensure_directories()
 
-        # 2. Register default LLM provider if not already registered
+        # 2. Register default providers (LLM, STT, TTS)
         if "llm" not in self._providers:
             try:
                 default_llm = get_llm_provider()
                 self.register_provider(default_llm)
             except Exception as e:
                 logger.warning(f"AppRuntime: Default LLM provider registration deferred: {e}")
+
+        if "stt" not in self._providers:
+            try:
+                from providers.stt.factory import get_stt_provider
+                self.register_provider(get_stt_provider())
+            except Exception as e:
+                logger.warning(f"AppRuntime: Default STT provider registration deferred: {e}")
+
+        if "tts" not in self._providers:
+            try:
+                from providers.tts.factory import get_tts_provider
+                self.register_provider(get_tts_provider())
+            except Exception as e:
+                logger.warning(f"AppRuntime: Default TTS provider registration deferred: {e}")
 
         # 3. Initialize all registered providers
         for ptype, prov in self._providers.items():

@@ -61,7 +61,7 @@ timeline
 
 ## Phase 3: Voice Input/Output + Clap Control
 
-- **Status:** `PLANNED` (Next Priority Milestone)
+- **Status:** `COMPLETED` (Verified & Tested)
 - **Purpose:** Build the primary natural interaction system: clap wake-up, voice activity detection, local speech transcription, and neural speech synthesis.
 - **Why we need it:** Voice is Captain's primary interaction model; clap activation provides frictionless, hands-free presence control.
 - **Current Starting Point:** Basic blocking `SpeechRecognition` and `pyttsx3` in `tools/voice.py`.

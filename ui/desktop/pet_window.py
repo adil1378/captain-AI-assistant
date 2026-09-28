@@ -164,7 +164,23 @@ class CaptainDesktopWindow(QMainWindow if PYSIDE_AVAILABLE else object):
         self._setup_system_tray()
         self._bind_runtime_state()
 
+        self._voice_manager = None
+        if not os.environ.get("PYTEST_CURRENT_TEST"):
+            self._init_voice_subsystem()
+
         logger.info("CaptainDesktopWindow: Desktop container initialized successfully.")
+
+    def _init_voice_subsystem(self) -> None:
+        """Initialize and link the Phase 3 Voice & Clap Manager."""
+        try:
+            from src.voice.voice_manager import voice_manager
+            self._voice_manager = voice_manager
+            self._voice_manager.attach_pet_window(self)
+            self._voice_manager.start()
+            logger.info("CaptainDesktopWindow: Phase 3 Voice subsystem attached and started.")
+        except Exception as e:
+            logger.warning(f"CaptainDesktopWindow: Voice subsystem init deferred: {e}")
+
 
     def _setup_window_properties(self) -> None:
         """Configure native frameless translucent overlay window properties."""
@@ -513,6 +529,11 @@ class CaptainDesktopWindow(QMainWindow if PYSIDE_AVAILABLE else object):
     def shutdown_app(self) -> None:
         """Gracefully shutdown Captain AI OS and close overlay window."""
         logger.info("CaptainDesktopWindow: Shutting down desktop container...")
+        if self._voice_manager:
+            try:
+                self._voice_manager.stop()
+            except Exception:
+                pass
         if self.tray_icon:
             self.tray_icon.hide()
         self.close()

@@ -46,8 +46,29 @@ class Settings(BaseSettings):
     llm_provider: str = Field(default="ollama", description="Primary LLM provider: ollama, openai, gemini, anthropic")
     default_provider: str = Field(default="ollama", description="Default provider alias")
     vision_provider: str = Field(default="ollama", description="Vision provider: ollama, gemini, mock")
-    stt_provider: str = Field(default="local", description="Speech-to-text provider: local, whisper, faster_whisper, mock")
-    tts_provider: str = Field(default="pyttsx3", description="Text-to-speech provider: pyttsx3, edge_tts, mock")
+    stt_provider: str = Field(default="local", description="Speech-to-text provider: local, faster_whisper, whisper, mock")
+    stt_model: str = Field(default="base.en", description="Whisper / STT model size or path")
+    stt_device: str = Field(default="cpu", description="STT compute device: cpu, cuda")
+    stt_compute_type: str = Field(default="int8", description="STT compute type: int8, float16, float32")
+    tts_provider: str = Field(default="pyttsx3", description="Text-to-speech provider: pyttsx3, piper, kokoro, mock")
+    tts_model: str = Field(default="en_US-lessac-medium", description="TTS model identifier or voice file")
+    tts_voice: str = Field(default="en-US", description="TTS voice language / profile")
+    tts_speed: float = Field(default=1.0, description="TTS speech playback speed rate")
+
+    # =========================================================================
+    # 2.1 VOICE, CLAP & VAD SETTINGS (PHASE 3)
+    # =========================================================================
+    voice_enabled: bool = Field(default=True, description="Enable audio microphone capture and voice loop")
+    microphone_device: Optional[int] = Field(default=None, description="Index of default audio input device (None = system default)")
+    vad_enabled: bool = Field(default=True, description="Enable local Silero Voice Activity Detection")
+    vad_sensitivity: float = Field(default=0.5, description="VAD confidence threshold for speech (0.0 - 1.0)")
+    clap_enabled: bool = Field(default=True, description="Enable acoustic clap detection toggle")
+    clap_threshold: float = Field(default=0.65, description="Audio energy threshold for impulse detection (0.0 - 1.0)")
+    clap_cooldown: float = Field(default=1.0, description="Cooldown interval in seconds between valid clap triggers")
+    clap_min_interval_ms: int = Field(default=150, description="Minimum milliseconds between two valid claps")
+    clap_max_interval_ms: int = Field(default=800, description="Maximum milliseconds window to register double clap")
+    clap_sample_rate: int = Field(default=44100, description="Audio input sampling rate in Hz")
+    clap_chunk_size: int = Field(default=1024, description="Audio stream buffer frame chunk size")
 
     # =========================================================================
     # 3. OLLAMA & LOCAL MODEL SETTINGS
@@ -70,15 +91,6 @@ class Settings(BaseSettings):
     gemini_api_key: Optional[str] = Field(default=None, description="Gemini API key alias")
     anthropic_api_key: Optional[str] = Field(default=None, description="Anthropic API key")
     github_token: Optional[str] = Field(default=None, description="GitHub personal access token")
-
-    # =========================================================================
-    # 5. DOUBLE-CLAP AUDIO DETECTION SETTINGS (STANDBY WAKE)
-    # =========================================================================
-    clap_threshold: float = Field(default=0.65, description="Audio energy threshold for impulse detection (0.0 - 1.0)")
-    clap_min_interval_ms: int = Field(default=150, description="Minimum milliseconds between two valid claps")
-    clap_max_interval_ms: int = Field(default=800, description="Maximum milliseconds window to register double clap")
-    clap_sample_rate: int = Field(default=44100, description="Audio input sampling rate in Hz")
-    clap_chunk_size: int = Field(default=1024, description="Audio stream buffer frame chunk size")
 
     # =========================================================================
     # 6. SCREEN OBSERVATION & VISION SETTINGS
