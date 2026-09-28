@@ -2,8 +2,10 @@
 
 > **PHASE:** Phase 3 — Voice Input, Voice Output & Clap Control  
 > **REPOSITORY:** `D:\captain`  
-> **STATUS:** ARCHITECTURALLY & FUNCTIONALLY VERIFIED (Automated Test Suite: 226 Tests Passing)  
-> **PHYSICAL HARDWARE STATUS:** Software complete; physical microphone/speaker room verification to be performed on live user setup.
+> **CURRENT BASELINE:** `4729f3b`  
+> **PHASE 3 STATUS:** SOFTWARE ARCHITECTURE COMPLETE & HARDENED (Automated Test Suite: 231 Tests Passing)  
+> **PHYSICAL HARDWARE STATUS:** PENDING (Physical microphone, room acoustics, and live speaker verification)  
+> **PHASE 4:** NOT STARTED  
 
 ---
 

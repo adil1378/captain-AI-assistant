@@ -61,7 +61,7 @@ timeline
 
 ## Phase 3: Voice Input/Output + Clap Control
 
-- **Status:** `COMPLETED` (Verified & Tested)
+- **Status:** `SOFTWARE ARCHITECTURE COMPLETE & HARDENED` (Baseline: `4729f3b` | Physical Hardware Verification: PENDING)
 - **Purpose:** Build the primary natural interaction system: clap wake-up, voice activity detection, local speech transcription, and neural speech synthesis.
 - **Why we need it:** Voice is Captain's primary interaction model; clap activation provides frictionless, hands-free presence control.
 - **Current Starting Point:** Basic blocking `SpeechRecognition` and `pyttsx3` in `tools/voice.py`.
@@ -85,7 +85,7 @@ timeline
 
 ## Phase 4: Screen Observation & Understanding
 
-- **Status:** `PLANNED`
+- **Status:** `NOT STARTED` (Planned)
 - **Purpose:** Give Captain visual awareness of what the user is seeing on the Windows desktop.
 - **Why we need it:** Captain cannot debug code, inspect errors, or operate desktop apps without seeing the screen.
 - **Current Starting Point:** Static `pyautogui.screenshot()` tool in `tools/system_tools.py`.

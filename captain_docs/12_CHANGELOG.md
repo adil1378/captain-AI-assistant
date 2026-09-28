@@ -14,7 +14,8 @@
   - Re-synchronized `00_MASTER_INDEX.md`, `11_CURRENT_STATE.md`, and `12_CHANGELOG.md` with active project reality.
 - **Files Affected:** `config.py`, `src/voice/audio_capture.py`, `src/voice/vad.py`, `src/voice/voice_manager.py`, `tests/unit/test_phase3_voice.py`, `captain_docs/`.
 - **Tests:** 25 Phase 3 unit tests passing; 231 total tests passing across full repository (`pytest tests/ -q`). Zero failures.
-- **Status:** `COMPLETE (SOFTWARE VERIFIED)`
+- **Commit:** `4729f3b` (*fix(phase-3): standardize 16kHz audio sample-rate, enforce vad_enabled, and sync state docs*)
+- **Status:** `COMPLETE (SOFTWARE ARCHITECTURE COMPLETE & HARDENED)`
 
 ---
 
