@@ -51,8 +51,8 @@
 - **Change:** Integrated existing 3D EMO pet into a native PySide6 desktop container with frameless, transparent, always-on-top windowing. Implemented bidirectional Qt state synchronization and native `SecurityConfirmationDialog`.
 - **Reason:** Transition Captain from a terminal-only CLI to an ambient, persistent desktop companion.
 - **Files Affected:**
-  - `ui/desktop/pet_window.py`
-  - `ui/desktop/security_dialog.py`
+  - `ui/desktop/pet_window.py` (container and SecurityConfirmationDialog)
+  - `ui/desktop/__init__.py`
   - `ui/desktop/pet.html`
   - `ui/desktop/pet_view.js`
   - `main.py` (added `desktop` command)

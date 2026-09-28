@@ -48,8 +48,8 @@ timeline
 - **Why we need it:** Users should not have to keep terminal windows open; the companion must live ambiently on the desktop.
 - **Current Starting Point:** Completed. PySide6 frameless transparent overlay hosting 3D EMO avatar is running and tested.
 - **Capabilities:** Frameless transparent window, draggable positioning, system tray menu, 3D WebGL avatar rendering, Qt state synchronization, and native security dialog.
-- **Architecture Changes:** Added `ui/desktop/` with `pet_window.py` and `security_dialog.py`.
-- **Files Affected:** `ui/desktop/pet_window.py`, `ui/desktop/security_dialog.py`, `ui/desktop/pet.html`, `main.py`.
+- **Architecture Changes:** Added `ui/desktop/` with `pet_window.py` (container and `SecurityConfirmationDialog`) and `pet.html`.
+- **Files Affected:** `ui/desktop/pet_window.py`, `ui/desktop/__init__.py`, `ui/desktop/pet.html`, `main.py`.
 - **Dependencies:** `PySide6`.
 - **Testing Requirements:** 8 unit tests in `tests/unit/test_phase2_desktop_pet.py`.
 - **Manual Verification:** Launch `python main.py desktop`, drag pet window across screen, trigger state changes, verify tray menu exit.

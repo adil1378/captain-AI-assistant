@@ -207,6 +207,7 @@ class CaptainDesktopWindow(QMainWindow if PYSIDE_AVAILABLE else object):
             web_settings.setAttribute(QWebEngineSettings.WebAttribute.Accelerated2dCanvasEnabled, True)
 
             self.web_view.setUrl(QUrl.fromLocalFile(str(html_path)))
+            self.web_view.installEventFilter(self)
             layout.addWidget(self.web_view)
             self._using_webengine = True
             logger.info(f"CaptainDesktopWindow: Loaded 3D pet from {html_path}")
@@ -373,33 +374,24 @@ class CaptainDesktopWindow(QMainWindow if PYSIDE_AVAILABLE else object):
 
     def _handle_state_changed_gui(self, state_str: str) -> None:
         """Update pet appearance in the Qt GUI thread."""
-        logger.info(f"CaptainDesktopWindow: Updating pet visual state -> {state_str}")
         if state_str == AppState.STANDBY.value:
-            # Standby mode: pet hidden
-            self.update_expression("sleeping")
-            self.hide_pet()
+            # Standby mode: pet enters passive/idle sleeping expression, remains visible (STANDBY != HIDDEN)
+            self.set_pet_state(state_str)
         elif state_str == AppState.ACTIVE.value:
-            self.show_pet()
-            self.update_expression("happy")
+            self.set_pet_state(state_str)
         elif state_str == AppState.LISTENING.value:
-            self.show_pet()
-            self.update_expression("cool")
+            self.set_pet_state(state_str)
         elif state_str == AppState.THINKING.value:
-            self.show_pet()
-            self.update_expression("thinking")
+            self.set_pet_state(state_str)
         elif state_str == AppState.OBSERVING.value:
-            self.show_pet()
-            self.update_expression("star")
+            self.set_pet_state(state_str)
         elif state_str == AppState.EXECUTING.value:
-            self.show_pet()
-            self.update_expression("salute")
+            self.set_pet_state(state_str)
         elif state_str == AppState.SPEAKING.value:
-            self.show_pet()
-            self.update_expression("happy")
+            self.set_pet_state(state_str)
             self._set_speaking(True)
         elif state_str == AppState.ERROR.value:
-            self.show_pet()
-            self.update_expression("angry")
+            self.set_pet_state(state_str)
 
         if state_str != AppState.SPEAKING.value:
             self._set_speaking(False)
@@ -410,12 +402,39 @@ class CaptainDesktopWindow(QMainWindow if PYSIDE_AVAILABLE else object):
             val_js = "true" if speaking else "false"
             self.web_view.page().runJavaScript(f"window.setSpeaking({val_js});")
 
+    def set_pet_state(self, state_str: str) -> None:
+        """Update pet visual state across all 8 AppState transitions."""
+        if hasattr(self, "_using_webengine") and self._using_webengine:
+            self.web_view.page().runJavaScript(f"window.setCaptainState('{state_str}');")
+        else:
+            expr_map = {
+                AppState.STANDBY.value: "sleeping",
+                AppState.ACTIVE.value: "happy",
+                AppState.LISTENING.value: "cool",
+                AppState.THINKING.value: "thinking",
+                AppState.OBSERVING.value: "star",
+                AppState.EXECUTING.value: "salute",
+                AppState.SPEAKING.value: "happy",
+                AppState.ERROR.value: "angry",
+            }
+            self._draw_fallback_pet(expr_map.get(state_str, "happy"))
+
     def update_expression(self, expression: str) -> None:
         """Update pet's facial expression."""
         if hasattr(self, "_using_webengine") and self._using_webengine:
             self.web_view.page().runJavaScript(f"window.setCaptainExpression('{expression}');")
         else:
             self._draw_fallback_pet(expression)
+
+    def eventFilter(self, watched, event):
+        """Allow window dragging even when mouse interaction occurs over child QWebEngineView."""
+        if PYSIDE_AVAILABLE and hasattr(self, "web_view") and watched == self.web_view:
+            if hasattr(event, "type"):
+                if event.type() == event.Type.MouseButtonPress and event.button() == Qt.LeftButton:
+                    self._drag_pos = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+                elif event.type() == event.Type.MouseMove and event.buttons() == Qt.LeftButton:
+                    self.move(event.globalPosition().toPoint() - self._drag_pos)
+        return super().eventFilter(watched, event)
 
     def _set_speaking(self, speaking: bool) -> None:
         self._emitter.speech_changed.emit(speaking)

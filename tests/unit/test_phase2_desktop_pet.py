@@ -123,10 +123,11 @@ def test_desktop_window_state_synchronization(qapp):
     runtime = AppRuntime(initial_state=AppState.STANDBY)
     window = CaptainDesktopWindow(runtime=runtime)
 
-    # 1. STANDBY -> Pet hidden
+    # 1. STANDBY -> Pet enters idle/sleeping expression and remains visible (STANDBY != HIDDEN)
+    window.show_pet()
     runtime.state_manager.transition_to(AppState.STANDBY, force=True)
     qapp.processEvents()
-    assert window.isVisible() is False
+    assert window.isVisible() is True
 
     # 2. ACTIVE
     runtime.wake(trigger="wake_test")

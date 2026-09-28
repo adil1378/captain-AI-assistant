@@ -35,7 +35,7 @@ flowchart TD
     subgraph Tool_Security ["Execution & Security Layer"]
         TIL["ToolInvocationLayer (src/tools/tool_invocation_layer.py)"]
         PERM["PermissionManager & ZeroTrustManager (src/backend/core/)"]
-        SEC_UI["SecurityConfirmationDialog (ui/desktop/security_dialog.py)"]
+        SEC_UI["SecurityConfirmationDialog (ui/desktop/pet_window.py)"]
         TOOLS["Tool Catalog (tools/ & src/tools/)\nFiles, Shell, Scrapers, GitHub, Voice, Location, Comms"]
     end
 
