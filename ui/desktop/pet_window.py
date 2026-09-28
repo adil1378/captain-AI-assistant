@@ -44,6 +44,8 @@ class StateSignalEmitter(QObject):
     """Qt Signal Emitter for thread-safe state synchronization from async agents."""
     state_changed = Signal(str)
     speech_changed = Signal(bool)
+    amplitude_changed = Signal(float)
+
 
 
 class SecurityConfirmationDialog(QDialog if PYSIDE_AVAILABLE else object):
@@ -158,6 +160,8 @@ class CaptainDesktopWindow(QMainWindow if PYSIDE_AVAILABLE else object):
         self._emitter = StateSignalEmitter()
         self._emitter.state_changed.connect(self._handle_state_changed_gui)
         self._emitter.speech_changed.connect(self._handle_speech_changed_gui)
+        self._emitter.amplitude_changed.connect(self._handle_amplitude_changed_gui)
+
 
         self._setup_window_properties()
         self._setup_pet_view()
@@ -169,6 +173,11 @@ class CaptainDesktopWindow(QMainWindow if PYSIDE_AVAILABLE else object):
             self._init_voice_subsystem()
 
         logger.info("CaptainDesktopWindow: Desktop container initialized successfully.")
+
+    @property
+    def signal_emitter(self) -> StateSignalEmitter:
+        """Expose the Qt state signal emitter for testability and external controller hooks."""
+        return self._emitter
 
     def _init_voice_subsystem(self) -> None:
         """Initialize and link the Phase 3 Voice & Clap Manager."""
@@ -417,6 +426,13 @@ class CaptainDesktopWindow(QMainWindow if PYSIDE_AVAILABLE else object):
         if hasattr(self, "_using_webengine") and self._using_webengine:
             val_js = "true" if speaking else "false"
             self.web_view.page().runJavaScript(f"window.setSpeaking({val_js});")
+
+    def _handle_amplitude_changed_gui(self, amplitude: float) -> None:
+        """Forward real-time audio amplitude to WebGL avatar in GUI thread."""
+        if hasattr(self, "_using_webengine") and self._using_webengine:
+            val = round(min(1.0, max(0.0, amplitude)), 3)
+            self.web_view.page().runJavaScript(f"if (window.setAudioAmplitude) window.setAudioAmplitude({val});")
+
 
     def set_pet_state(self, state_str: str) -> None:
         """Update pet visual state across all 8 AppState transitions."""

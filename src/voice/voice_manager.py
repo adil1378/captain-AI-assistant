@@ -43,6 +43,7 @@ class VoiceManager:
         tts_provider: Optional[BaseTTSProvider] = None,
         clap_detector: Optional[ClapDetector] = None,
         vad_detector: Optional[SileroVADDetector] = None,
+        desktop_window: Optional[Any] = None,
     ):
         self.runtime = runtime or global_runtime
         self.state_manager: StateManager = self.runtime.state_manager
@@ -67,6 +68,9 @@ class VoiceManager:
         self._speech_buffer: list = []
         self._pet_window = None
 
+        if desktop_window is not None:
+            self.attach_pet_window(desktop_window)
+
         # Wire state manager subscriber
         self.state_manager.subscribe(self._on_state_transition)
 
@@ -77,14 +81,27 @@ class VoiceManager:
             self.tts_provider.set_audio_chunk_callback(self._handle_tts_audio_chunk)
 
     def _handle_mic_amplitude(self, amplitude: float) -> None:
-        """Callback for microphone amplitude updates (used for listening visualizer)."""
-        pass
+        """Forward real-time microphone energy to EMO pet while in LISTENING state."""
+        if self._pet_window and hasattr(self._pet_window, "_emitter"):
+            if self.state_manager.current_state == AppState.LISTENING:
+                try:
+                    self._pet_window._emitter.amplitude_changed.emit(amplitude)
+                except Exception:
+                    pass
 
     def _handle_tts_audio_chunk(self, chunk_bytes: bytes) -> None:
-        """Callback for TTS audio stream chunk to trigger pet mouth animation."""
-        if self._pet_window and hasattr(self._pet_window, "_handle_speech_changed_gui"):
-            # Signal mouth open while chunk is actively playing
-            pass
+        """Calculate audio chunk RMS and drive EMO pet mouth lip-sync animation."""
+        if not chunk_bytes or len(chunk_bytes) < 4:
+            return
+        if self._pet_window and hasattr(self._pet_window, "_emitter"):
+            try:
+                audio_data = np.frombuffer(chunk_bytes, dtype=np.int16).astype(np.float32) / 32768.0
+                rms = float(np.sqrt(np.mean(audio_data ** 2)))
+                is_speaking = rms > 0.015
+                self._pet_window._emitter.speech_changed.emit(is_speaking)
+                self._pet_window._emitter.amplitude_changed.emit(min(1.0, rms * 4.0))
+            except Exception:
+                pass
 
     def _on_state_transition(self, event: StateTransitionEvent) -> None:
         """Handle application state changes."""
@@ -96,12 +113,31 @@ class VoiceManager:
             self.vad_detector.reset()
 
     def start(self, loop: Optional[asyncio.AbstractEventLoop] = None) -> bool:
-        """Start the background voice loop."""
+        """Start the background voice loop with a guaranteed running event loop."""
         if self._running:
             return True
 
-        self._async_loop = loop or asyncio.get_event_loop()
         self._running = True
+        self._owns_loop = False
+
+        # Ensure a reliable running background event loop for async voice query dispatching
+        if loop is not None and loop.is_running():
+            self._async_loop = loop
+        else:
+            try:
+                running = asyncio.get_running_loop()
+                if running.is_running():
+                    self._async_loop = running
+            except RuntimeError:
+                # No running event loop in current thread (e.g. Qt GUI main thread)
+                self._async_loop = asyncio.new_event_loop()
+                self._owns_loop = True
+                self._loop_thread = threading.Thread(
+                    target=self._run_async_event_loop,
+                    name="CaptainVoiceAsyncLoop",
+                    daemon=True,
+                )
+                self._loop_thread.start()
 
         # Start microphone hardware capture
         if settings.voice_enabled:
@@ -116,13 +152,21 @@ class VoiceManager:
         logger.info("VoiceManager: Background audio and gesture processing started.")
         return True
 
+    def _run_async_event_loop(self) -> None:
+        """Dedicated background event loop for async voice query dispatching."""
+        asyncio.set_event_loop(self._async_loop)
+        self._async_loop.run_forever()
+
     def stop(self) -> None:
         """Stop background voice loop."""
         self._running = False
         self.audio_capture.stop()
         if self._worker_thread and self._worker_thread.is_alive():
             self._worker_thread.join(timeout=1.0)
+        if getattr(self, "_owns_loop", False) and self._async_loop and self._async_loop.is_running():
+            self._async_loop.call_soon_threadsafe(self._async_loop.stop)
         logger.info("VoiceManager: Stopped.")
+
 
     def process_audio_frame(self, frame: np.ndarray) -> None:
         """

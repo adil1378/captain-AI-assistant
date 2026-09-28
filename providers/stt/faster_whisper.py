@@ -22,10 +22,12 @@ class FasterWhisperSTTProvider(BaseSTTProvider):
         model_size_or_path: Optional[str] = None,
         device: Optional[str] = None,
         compute_type: Optional[str] = None,
+        allow_mock_fallback: bool = False,
     ):
         self.model_size = model_size_or_path or settings.stt_model
         self.device = device or settings.stt_device
         self.compute_type = compute_type or settings.stt_compute_type
+        self.allow_mock_fallback = allow_mock_fallback
         self._model = None
         self._initialized = False
 
@@ -92,10 +94,13 @@ class FasterWhisperSTTProvider(BaseSTTProvider):
         if not self._initialized:
             await self.initialize()
 
-        # If model is unavailable (offline test without weights), provide clean fallback
         if self._model is None:
-            logger.warning("FasterWhisperSTT: Model not loaded; returning mock or empty transcription")
-            return STTResult(text="[voice input]", confidence=0.9)
+            if self.allow_mock_fallback:
+                logger.warning("FasterWhisperSTT: Model not loaded; returning mock test fallback.")
+                return STTResult(text="[voice input]", confidence=0.9)
+            logger.error("FasterWhisperSTT: Transcription aborted because Whisper model weights are not loaded.")
+            raise RuntimeError(f"FasterWhisperSTT: Model '{self.model_size}' weights are not loaded.")
+
 
         def _do_transcribe() -> STTResult:
             try:

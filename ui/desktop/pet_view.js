@@ -10,6 +10,7 @@
     let threeCanvas = document.getElementById('pet-canvas');
     let isSpeakingState = false;
     let currentExpression = 'happy';
+    let currentAudioAmplitude = 0.0;
     let isBlinkingState = false;
     let lastBlink = Date.now();
     let startTime = Date.now();
@@ -114,13 +115,23 @@
             }
 
             switch (expression) {
-                case 'cool': // 😎 Cool Sunglasses
+                case 'cool': // 😎 Cool Sunglasses / Listening Mode
                     faceCtx.fillStyle = '#00f2fe';
                     roundRect(faceCtx, 36, 80, 80, 50, 10);
                     roundRect(faceCtx, 140, 80, 80, 50, 10);
                     faceCtx.beginPath(); faceCtx.moveTo(116, 95); faceCtx.lineTo(140, 95); faceCtx.stroke();
+                    if (currentAudioAmplitude > 0.05) {
+                        const ripple = Math.min(22, Math.floor(currentAudioAmplitude * 28));
+                        faceCtx.lineWidth = 4;
+                        faceCtx.beginPath();
+                        faceCtx.arc(76, 105, 30 + ripple, 0, Math.PI * 2);
+                        faceCtx.arc(180, 105, 30 + ripple, 0, Math.PI * 2);
+                        faceCtx.stroke();
+                        faceCtx.lineWidth = 10;
+                    }
                     faceCtx.beginPath(); faceCtx.arc(135, 165, 18, Math.PI * 0.1, Math.PI * 0.7); faceCtx.stroke();
                     break;
+
 
                 case 'crying': // 😭 Crying Tears
                     faceCtx.lineWidth = 12;
@@ -241,23 +252,19 @@
                     roundRect(faceCtx, 146, 78, 64, 64, 18);
 
                     if (isSpeakingState) {
-                        // Real-time Animated Lip-Sync Mouth Engine
-                        const frame = Math.floor(Date.now() / 90) % 4;
+                        // Real-time Audio-Reactive Lip-Sync Mouth Engine
                         faceCtx.fillStyle = '#00f2fe';
-                        if (frame === 0) {
-                            faceCtx.beginPath(); faceCtx.arc(128, 174, 15, 0, Math.PI * 2); faceCtx.fill();
-                        } else if (frame === 1) {
-                            faceCtx.beginPath(); faceCtx.arc(128, 162, 22, Math.PI * 0.1, Math.PI * 0.9); faceCtx.stroke();
-                        } else if (frame === 2) {
-                            faceCtx.beginPath(); faceCtx.arc(128, 172, 9, 0, Math.PI * 2); faceCtx.fill();
-                        } else {
-                            faceCtx.lineWidth = 12;
-                            faceCtx.beginPath(); faceCtx.moveTo(108, 168); faceCtx.lineTo(148, 168); faceCtx.stroke();
-                        }
+                        const amp = Math.max(0.12, currentAudioAmplitude);
+                        const mouthH = Math.min(26, Math.floor(7 + amp * 32));
+                        const mouthW = Math.min(30, Math.floor(14 + amp * 18));
+                        faceCtx.beginPath();
+                        faceCtx.ellipse(128, 168, mouthW, mouthH, 0, 0, Math.PI * 2);
+                        faceCtx.fill();
                     } else {
                         faceCtx.beginPath(); faceCtx.arc(128, 160, 22, Math.PI * 0.15, Math.PI * 0.85); faceCtx.stroke();
                     }
                     break;
+
             }
 
             faceTexture.needsUpdate = true;
@@ -478,8 +485,22 @@
 
     window.setSpeaking = function (speaking) {
         isSpeakingState = Boolean(speaking);
+        if (!isSpeakingState) {
+            currentAudioAmplitude = 0.0;
+        }
+        if (scene && scene.userData.drawRobotFace) {
+            scene.userData.drawRobotFace(currentExpression);
+        }
+    };
+
+    window.setAudioAmplitude = function (amplitude) {
+        currentAudioAmplitude = Math.max(0.0, Math.min(1.0, Number(amplitude) || 0.0));
+        if (currentAudioAmplitude > 0.04) {
+            isSpeakingState = true;
+        }
         if (scene && scene.userData.drawRobotFace) {
             scene.userData.drawRobotFace(currentExpression);
         }
     };
 })();
+

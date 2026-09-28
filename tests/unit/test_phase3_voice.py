@@ -82,52 +82,91 @@ def test_clap_detector_initialization():
 
 
 # =============================================================================
-# 2. Clap Debounce and Cooldown
+# 2. Clap Debounce, Interval Window, and Cooldown (Double-Clap)
 # =============================================================================
 def test_clap_debounce_and_cooldown():
-    detector = ClapDetector(threshold=0.60, cooldown_sec=0.2)
+    detector = ClapDetector(threshold=0.60, cooldown_sec=0.2, min_interval_ms=100.0, max_interval_ms=500.0)
     clap_frame = _generate_synthetic_clap_pulse()
 
-    # First clap: recognized
-    assert detector.process_frame(clap_frame) is True
-
-    # Immediate second clap within cooldown window: rejected
+    # 1st clap impulse: registered, returns False (waiting for 2nd clap)
     assert detector.process_frame(clap_frame) is False
 
-    # After cooldown period: recognized again
+    # Immediate 2nd impulse (< 100ms): rejected as reverberation/echo
+    assert detector.process_frame(clap_frame) is False
+
+    # Valid 2nd clap within [100ms, 500ms] window: double-clap recognized!
+    time.sleep(0.12)
+    assert detector.process_frame(clap_frame) is True
+
+    # Immediate clap within cooldown: rejected
+    assert detector.process_frame(clap_frame) is False
+
+    # After cooldown period (0.2s): new double-clap sequence can be detected
+    time.sleep(0.22)
+    assert detector.process_frame(clap_frame) is False  # 1st of new pair
+    time.sleep(0.12)
+    assert detector.process_frame(clap_frame) is True   # 2nd of new pair
+
+
+def test_double_clap_timeout_resets():
+    """Verify that if the second clap arrives after max_interval_ms, it resets the window."""
+    detector = ClapDetector(threshold=0.60, min_interval_ms=50.0, max_interval_ms=200.0)
+    clap_frame = _generate_synthetic_clap_pulse()
+
+    # First clap at t=0
+    assert detector.process_frame(clap_frame) is False
+
+    # Wait longer than max_interval (e.g. 250ms)
     time.sleep(0.25)
+    # This clap arrives too late to complete a pair; it resets window as a new 1st clap
+    assert detector.process_frame(clap_frame) is False
+
+    # Now a second clap arrives in 100ms: valid double-clap!
+    time.sleep(0.10)
     assert detector.process_frame(clap_frame) is True
 
 
 # =============================================================================
-# 3. STANDBY -> ACTIVE via Clap
+# 3. STANDBY -> ACTIVE via Double-Clap
 # =============================================================================
 def test_standby_to_active_via_clap(mock_runtime):
-    detector = ClapDetector(threshold=0.60, cooldown_sec=0.1)
+    detector = ClapDetector(threshold=0.60, cooldown_sec=0.1, min_interval_ms=50.0, max_interval_ms=400.0)
     mock_runtime.state_manager.reset(AppState.STANDBY)
 
     manager = VoiceManager(runtime=mock_runtime, clap_detector=detector)
     clap_frame = _generate_synthetic_clap_pulse()
 
+    # First clap: still STANDBY
+    manager.process_audio_frame(clap_frame)
+    assert mock_runtime.current_state == AppState.STANDBY
+
+    # Second clap within window: triggers ACTIVE
+    time.sleep(0.10)
     manager.process_audio_frame(clap_frame)
     assert mock_runtime.current_state == AppState.ACTIVE
-    assert mock_runtime.state_manager.history[-1].trigger == "clap_activation"
+    assert mock_runtime.state_manager.history[-1].trigger in ("clap_activation", "double_clap_activation")
 
 
 # =============================================================================
-# 4. ACTIVE -> STANDBY via Clap
+# 4. ACTIVE -> STANDBY via Double-Clap
 # =============================================================================
 def test_active_to_standby_via_clap(mock_runtime):
-    detector = ClapDetector(threshold=0.60, cooldown_sec=0.05)
+    detector = ClapDetector(threshold=0.60, cooldown_sec=0.05, min_interval_ms=50.0, max_interval_ms=400.0)
     mock_runtime.state_manager.reset(AppState.ACTIVE)
 
     manager = VoiceManager(runtime=mock_runtime, clap_detector=detector)
     clap_frame = _generate_synthetic_clap_pulse()
 
     time.sleep(0.06)
+    # First clap
+    manager.process_audio_frame(clap_frame)
+    assert mock_runtime.current_state == AppState.ACTIVE
+
+    # Second clap
+    time.sleep(0.10)
     manager.process_audio_frame(clap_frame)
     assert mock_runtime.current_state == AppState.STANDBY
-    assert mock_runtime.state_manager.history[-1].trigger == "clap_deactivation"
+    assert mock_runtime.state_manager.history[-1].trigger in ("clap_deactivation", "double_clap_deactivation")
 
 
 # =============================================================================
@@ -438,4 +477,47 @@ def test_pet_visual_synchronization_with_voice_states(qapp, mock_runtime):
     mock_runtime.wake("completed")
     qapp.processEvents()
     assert mock_runtime.current_state == AppState.ACTIVE
+
+
+# =============================================================================
+# 18. Amplitude Streaming and Real-Time Mouth Synchronization Signal
+# =============================================================================
+@pytest.mark.skipif(not PYSIDE_AVAILABLE, reason="PySide6 required")
+def test_amplitude_streaming_and_mouth_sync(qapp, mock_runtime):
+    window = CaptainDesktopWindow(runtime=mock_runtime)
+    received_amplitudes = []
+    window.signal_emitter.amplitude_changed.connect(lambda amp: received_amplitudes.append(amp))
+
+    manager = VoiceManager(runtime=mock_runtime, desktop_window=window)
+
+    # Simulate TTS audio chunk playback (RMS > 0)
+    chunk = (0.5 * np.ones(512, dtype=np.float32)).tobytes()
+    manager._handle_tts_audio_chunk(chunk)
+    qapp.processEvents()
+
+    assert len(received_amplitudes) >= 1
+    assert received_amplitudes[-1] > 0.0
+
+    # Also test mic amplitude streaming during LISTENING state
+    mock_runtime.state_manager.reset(AppState.LISTENING)
+    mic_chunk = (0.3 * np.ones(512, dtype=np.float32)).tobytes()
+    manager._handle_mic_amplitude(mic_chunk)
+    qapp.processEvents()
+    assert len(received_amplitudes) >= 2
+
+
+# =============================================================================
+# 19. FasterWhisper Strict Failure Mode (No Silent Mock in Production)
+# =============================================================================
+@pytest.mark.anyio
+async def test_faster_whisper_strict_failure_mode():
+    from providers.stt.faster_whisper import FasterWhisperSTTProvider
+    # With allow_mock_fallback=False (production default), missing model raises RuntimeError
+    stt = FasterWhisperSTTProvider(model_size_or_path="non_existent_model_xyz", allow_mock_fallback=False)
+    # Pass valid PCM audio buffer (>= 320 bytes)
+    sample_pcm = b"\x00\x05" * 320
+    with pytest.raises(RuntimeError) as exc_info:
+        await stt.transcribe(sample_pcm)
+    assert "not loaded" in str(exc_info.value)
+
 
